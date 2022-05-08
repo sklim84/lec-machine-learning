@@ -1,0 +1,4 @@
+activation function,mean accuracy
+logistic,0.9336950904392766
+tanh,0.9343324720068906
+relu,0.9401550387596898
