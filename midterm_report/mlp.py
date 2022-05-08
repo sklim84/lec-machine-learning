@@ -34,7 +34,7 @@ for layer in hidden_layers:
                                   early_stopping=True,
                                   max_iter=200)
         mean_accr = 0
-        for index in range(num_iter + 1):
+        for index in range(num_iter):
             mlp_model.fit(train_data, train_label)
             accr = mlp_model.score(test_data, test_label)
             print('hidden layrs: {}, hidden neurons: {}, accuracy: {}'.format(layer, neuron, accr))
@@ -61,7 +61,7 @@ for act_func in activation_function:
                               early_stopping=True,
                               max_iter=200)
     mean_accr = 0
-    for index in range(num_iter + 1):
+    for index in range(num_iter):
         mlp_model.fit(train_data, train_label)
         accr = mlp_model.score(test_data, test_label)
         print('activation function: {}, accuracy: {}'.format(act_func, accr))
