@@ -2,6 +2,7 @@ from sklearn.neural_network import MLPClassifier
 
 from _datasets import data_loader
 import pandas as pd
+import time
 
 ####################
 # Research question
@@ -34,25 +35,32 @@ for layer in hidden_layers:
                                   early_stopping=True,
                                   max_iter=200)
         mean_accr = 0
+        mean_elapsed_time = 0
         for index in range(num_iter):
+            start_time = time.time()
             mlp_model.fit(train_data, train_label)
             accr = mlp_model.score(test_data, test_label)
-            print('hidden layrs: {}, hidden neurons: {}, accuracy: {}'.format(layer, neuron, accr))
+            elapsed_time = time.time() - start_time
+            print('hidden layrs: {}, hidden neurons: {}, accuracy: {}, elapsed time: {}'.format(layer, neuron, accr,
+                                                                                                 elapsed_time))
             mean_accr += accr / num_iter
-        arch_accr_list.append((layer, neuron, mean_accr))
+            mean_elapsed_time += elapsed_time / num_iter
+        arch_accr_list.append((layer, neuron, mean_accr, mean_elapsed_time))
 
-df_arch_accr = pd.DataFrame(arch_accr_list, columns=['hidden layers', 'hidden neurons', 'mean accuracy'])
+# hidden layer/neuron 수 별 mean accuracy/elapsed time 저장
+df_arch_accr = pd.DataFrame(arch_accr_list,
+                            columns=['hidden layers', 'hidden neurons', 'mean accuracy', 'mean elapsed time'])
 print(df_arch_accr)
 df_arch_accr.to_csv('./results/mlp_arch_accr.csv', index=False)
 
 ####################
-# RQ 2. activation function (layers: 5, neurons: 256)
+# RQ 2. activation function (layers: 5, neurons: 512)
 # - logistic
 # - tanh
 # - relu(def)
 ####################
 activation_function = ['logistic', 'tanh', 'relu']
-num_layers, num_neurons = 5, 256
+num_layers, num_neurons = 5, 512
 act_func_accr_list = []
 for act_func in activation_function:
     mlp_model = MLPClassifier(hidden_layer_sizes=(num_layers, num_neurons),
@@ -73,7 +81,7 @@ print(df_acr_func_accr)
 df_acr_func_accr.to_csv('./results/mlp_act_func_accr.csv', index=False)
 
 ####################
-# RQ 3. learning algorithm (layers: 5, neurons: 256)
+# RQ 3. learning algorithm (layers: 5, neurons: 512)
 # - lbfgs : the family of quasi-Newton methods
 # - sgd : stochastic gradient descent
 #   - learning_rate(def=constant, invscaling, adaptive), learning_rate_init(def=0.001)
