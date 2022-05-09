@@ -62,51 +62,54 @@ epoch_accr_list = []
 for epoch in range(num_epoch):
     mlp_model = MLPClassifier(hidden_layer_sizes=(num_layers, num_neurons),
                               activation='relu',
-                              solver="adam",
+                              solver='adam',
                               early_stopping=True,
                               max_iter=epoch + 1)
-
-    mlp_model = mlp_model.fit(train_data, train_label)
-    accr = mlp_model.score(test_data, test_label)
-    print('epoch: {}, accuracy: {}'.format(epoch + 1, accr))
-
-    epoch_accr_list.append((epoch + 1, accr))
-
-# epoch별 accuracy 저장
-df_epoch_accr = pd.DataFrame(epoch_accr_list, columns=['epoch', 'accuracy'])
-print(df_epoch_accr)
-df_epoch_accr.to_csv('./results/mlp_epoch_accr_{}_{}_{}.csv'.format(num_epoch, num_layers, num_neurons), index=False)
-
-####################
-# RQ 2. activation function (layers: 2, neurons: 64)
-# - logistic
-# - tanh
-# - relu(def)
-####################
-activation_function = ['logistic', 'tanh', 'relu']
-num_layers, num_neurons = 2, 64
-act_func_accr_list = []
-for act_func in activation_function:
-    mlp_model = MLPClassifier(hidden_layer_sizes=(num_layers, num_neurons),
-                              activation=act_func,
-                              solver="adam",
-                              early_stopping=True,
-                              max_iter=200)
     mean_accr = 0
     for index in range(num_iter):
         mlp_model = mlp_model.fit(train_data, train_label)
         accr = mlp_model.score(test_data, test_label)
-        print('activation function: {}, accuracy: {}'.format(act_func, accr))
-        mean_accr += accr / num_iter
-    act_func_accr_list.append((act_func, mean_accr))
+        print('epoch: {}, accuracy: {}'.format(epoch + 1, accr))
 
-df_acr_func_accr = pd.DataFrame(act_func_accr_list, columns=['activation function', 'mean accuracy'])
-print(df_acr_func_accr)
-df_acr_func_accr.to_csv('./results/mlp_act_func_accr_{}_{}.csv'.format(num_layers, num_neurons), index=False)
-# TODO epoch 증가에 따른 activation function별 accuracy 추이
+        mean_accr += accr / num_iter
+    epoch_accr_list.append((epoch + 1, accr))
+
+# epoch별 accuracy 저장
+df_epoch_accr = pd.DataFrame(epoch_accr_list, columns=['epoch', 'mean accuracy'])
+print(df_epoch_accr)
+df_epoch_accr.to_csv('./results/mlp_epoch_accr_{}_{}_{}.csv'.format(num_epoch, num_layers, num_neurons), index=False)
+
 
 ####################
-# RQ 3. learning algorithm (layers: 5, neurons: 128)
+# RQ 2. activation function (layers: 2, neurons: 64)
+# - logistic(sigmoid)
+# - tanh
+# - relu(def)
+####################
+activation_function = ['logistic', 'tanh', 'relu']
+num_layers, num_neurons, num_epoch = 2, 64, 100
+act_func_accr_list = []
+for act_func in activation_function:
+    for epoch in range(num_epoch):
+        mlp_model = MLPClassifier(hidden_layer_sizes=(num_layers, num_neurons),
+                                  activation=act_func,
+                                  solver='adam',
+                                  early_stopping=True,
+                                  max_iter=epoch + 1)
+        mean_accr = 0
+        for index in range(num_iter):
+            mlp_model = mlp_model.fit(train_data, train_label)
+            accr = mlp_model.score(test_data, test_label)
+            print('activation function: {}, epoch: {}, accuracy: {}'.format(act_func, epoch + 1, accr))
+            mean_accr += accr / num_iter
+        act_func_accr_list.append((act_func, epoch + 1, mean_accr))
+
+df_act_func_accr = pd.DataFrame(act_func_accr_list, columns=['activation function', 'epoch', 'mean accuracy'])
+print(df_act_func_accr)
+df_act_func_accr.to_csv('./results/mlp_act_func_accr_{}_{}.csv'.format(num_layers, num_neurons), index=False)
+
+####################
+# RQ 3. learning algorithm (layers: 2, neurons: 64)
 # - lbfgs : the family of quasi-Newton methods
 # - sgd : stochastic gradient descent
 #   - learning_rate(def=constant, invscaling, adaptive), learning_rate_init(def=0.001)
@@ -115,4 +118,43 @@ df_acr_func_accr.to_csv('./results/mlp_act_func_accr_{}_{}.csv'.format(num_layer
 #   - learning_rate_init(def=0.001), early_stopping(def=False)
 #   - beta_1(def=0.9), beta_2(def=0.999), epsilon(def=1e-8)
 ####################
-# TODO epoch 증가에 따른 learning algorithm별 accuracy 추이
+learning_algorithm = ['lbfgs', 'nesterovs', 'adam']
+num_layers, num_neurons, num_epoch = 2, 64, 100
+lrn_alg_accr_list = []
+for lrn_alg in learning_algorithm:
+    for epoch in range(num_epoch):
+        mlp_model = None
+        if lrn_alg == 'lbfgs':
+            mlp_model = MLPClassifier(hidden_layer_sizes=(num_layers, num_neurons),
+                                      activation='relu',
+                                      solver=lrn_alg,
+                                      max_iter=epoch + 1)
+        elif lrn_alg == 'nesterovs':
+            mlp_model = MLPClassifier(hidden_layer_sizes=(num_layers, num_neurons),
+                                      activation='relu',
+                                      solver='sgd',
+                                      learning_rate='constant',
+                                      learning_rate_init=0.1,
+                                      momentum=0.9,
+                                      nesterovs_momentum=True,
+                                      early_stopping=True,
+                                      max_iter=epoch + 1)
+        elif lrn_alg == 'adam':
+            mlp_model = MLPClassifier(hidden_layer_sizes=(num_layers, num_neurons),
+                                      activation='relu',
+                                      solver=lrn_alg,
+                                      learning_rate_init=0.1,
+                                      early_stopping=True,
+                                      max_iter=epoch + 1)
+
+        mean_accr = 0
+        for index in range(num_iter):
+            mlp_model = mlp_model.fit(train_data, train_label)
+            accr = mlp_model.score(test_data, test_label)
+            print('learning algorithm: {}, epoch: {}, accuracy: {}'.format(lrn_alg, epoch + 1, accr))
+            mean_accr += accr / num_iter
+        lrn_alg_accr_list.append((lrn_alg, epoch + 1, mean_accr))
+
+df_lrn_alg_accr = pd.DataFrame(lrn_alg_accr_list, columns=['learning algorithm', 'epoch', 'mean accuracy'])
+print(df_lrn_alg_accr)
+df_lrn_alg_accr.to_csv('./results/mlp_lrn_alg_accr_{}_{}.csv'.format(num_layers, num_neurons), index=False)
