@@ -26,5 +26,3 @@ def load():
     test_label = np.repeat(test_label, NUM_TEST_DATA_EACH_CLASS, axis=0)
 
     return train_data, train_label, test_data, test_label
-
-load()
