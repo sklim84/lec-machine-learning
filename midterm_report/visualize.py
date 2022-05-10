@@ -105,8 +105,6 @@ rbf_penalty_accr = df_rbf_penalty_accr['accuracy'].to_list()
 rbf_penalty_accr_num_sv = df_rbf_penalty_accr['support vectors'].to_list()
 penalties = [1e-3, 1e-2, 1e-1, 1e-0, 1e+1, 1e+2, 1e+3]
 
-# plt.figure(figsize=(8, 4))
-# plt.subplot(1, 2, 1)
 plt.xlabel('Penalty parameter(C)')
 plt.xscale('log')
 plt.ylabel('Test Accuracy')
@@ -114,7 +112,6 @@ plt.ylim(0, 1.0)
 plt.plot(penalties, rbf_penalty_accr)
 plt.show()
 
-# plt.subplot(1, 2, 2)
 plt.xlabel('Penalty parameter(C)')
 plt.xscale('log')
 plt.ylabel('Number of support vectors')
