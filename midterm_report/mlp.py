@@ -28,7 +28,7 @@ hidden_neurons = [2, 4, 8, 16, 32, 64, 128, 256]
 arch_accr_list = []
 for layer in hidden_layers:
     for neuron in hidden_neurons:
-        hidden_layer_sizes = (neuron, ) * layer
+        hidden_layer_sizes = (neuron,) * layer
         mlp_model = MLPClassifier(hidden_layer_sizes=hidden_layer_sizes,
                                   activation='relu',
                                   solver="adam",
@@ -57,7 +57,7 @@ df_arch_accr.to_csv('./results/mlp_arch_accr.csv', index=False)
 ####################
 # RQ 1-1. epoch (layers: 2, neurons: 64)
 ####################
-num_layers, num_neurons, num_epoch = 2, 64, 200
+num_layers, num_neurons, num_epoch = 2, 64, 300
 epoch_accr_list = []
 for epoch in range(num_epoch):
     mlp_model = MLPClassifier(hidden_layer_sizes=(num_layers, num_neurons),
@@ -78,7 +78,6 @@ for epoch in range(num_epoch):
 df_epoch_accr = pd.DataFrame(epoch_accr_list, columns=['epoch', 'mean accuracy'])
 print(df_epoch_accr)
 df_epoch_accr.to_csv('./results/mlp_epoch_accr_{}_{}_{}.csv'.format(num_epoch, num_layers, num_neurons), index=False)
-
 
 ####################
 # RQ 2. activation function (layers: 2, neurons: 64)
@@ -118,10 +117,10 @@ df_act_func_accr.to_csv('./results/mlp_act_func_accr_{}_{}.csv'.format(num_layer
 #   - learning_rate_init(def=0.001), early_stopping(def=False)
 #   - beta_1(def=0.9), beta_2(def=0.999), epsilon(def=1e-8)
 ####################
-learning_algorithm = ['lbfgs', 'nesterovs', 'adam']
+learning_algorithms = ['lbfgs', 'nesterovs', 'adam']
 num_layers, num_neurons, num_epoch = 2, 64, 100
 lrn_alg_accr_list = []
-for lrn_alg in learning_algorithm:
+for lrn_alg in learning_algorithms:
     for epoch in range(num_epoch):
         mlp_model = None
         if lrn_alg == 'lbfgs':
@@ -158,3 +157,32 @@ for lrn_alg in learning_algorithm:
 df_lrn_alg_accr = pd.DataFrame(lrn_alg_accr_list, columns=['learning algorithm', 'epoch', 'mean accuracy'])
 print(df_lrn_alg_accr)
 df_lrn_alg_accr.to_csv('./results/mlp_lrn_alg_accr_{}_{}.csv'.format(num_layers, num_neurons), index=False)
+
+####################
+# RQ 3-1. learning rate(layers: 2, neurons: 64)
+# - learning algorithm : adam
+####################
+learning_rates = [0.1, 0.01, 0.001]
+num_layers, num_neurons, num_epoch = 2, 64, 100
+adam_accr_list = []
+for learning_rate in learning_rates:
+    for epoch in range(num_epoch):
+        mlp_model = MLPClassifier(hidden_layer_sizes=(num_layers, num_neurons),
+                                  activation='relu',
+                                  solver='adam',
+                                  learning_rate_init=learning_rate,
+                                  early_stopping=True,
+                                  max_iter=epoch + 1)
+        mean_accr = 0
+        for index in range(num_iter):
+            mlp_model = mlp_model.fit(train_data, train_label)
+            accr = mlp_model.score(test_data, test_label)
+            print('epoch: {}, iter: {}, learning rate: {}, accuracy: {}'.format(epoch + 1, index, learning_rate, accr))
+
+            mean_accr += accr / num_iter
+        adam_accr_list.append((epoch + 1, learning_rate, accr))
+
+# learning rate별 accuracy 저장
+df_adam_accr = pd.DataFrame(adam_accr_list, columns=['epoch', 'learning rate', 'mean accuracy'])
+print(df_adam_accr)
+df_adam_accr.to_csv('./results/mlp_adam_accr_{}_{}.csv'.format(num_layers, num_neurons), index=False)
