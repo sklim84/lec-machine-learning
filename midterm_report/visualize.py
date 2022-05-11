@@ -77,7 +77,7 @@ plt.show()
 # RQ 3-1. learning rate(layers: 2, neurons: 64)
 # - learning algorithm : adam
 ####################
-df_adam_accr = pd.read_csv('./results/mlp_adam_accr_2_64_iter1.csv')
+df_adam_accr = pd.read_csv('./results/mlp_adam_accr_2_64.csv')
 print(df_adam_accr)
 
 lr_1e_1_list = df_adam_accr.iloc[:100, :]['mean accuracy'].to_list()
