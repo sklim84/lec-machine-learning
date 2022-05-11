@@ -119,3 +119,25 @@ plt.xscale('log')
 plt.ylabel('Number of support vectors')
 plt.plot(penalties, rbf_penalty_accr_num_sv, color='g')
 plt.show()
+
+####################
+# RQ 8. extremely small training dataset (layers: 2, neurons: 64)
+# - learning algorithm : adam(lr=0.001)
+# - activation function : relu
+####################
+df_small_accr = pd.read_csv('./results/mlp_small_accr_2_64.csv')
+small_svm_accr = 0.7727820844099914 # svm.py RQ 8. 참조
+print(df_small_accr)
+
+small_accr_list = df_small_accr['mean accuracy'].to_list()
+epochs = list(range(1, 201))
+
+plt.xlabel('epochs')
+plt.xticks([1, 50, 100, 150, 200])
+plt.ylabel('Test Accuracy')
+plt.ylim(0, 1.0)
+plt.plot(epochs, small_accr_list, label='MLP')
+plt.axhline(y=small_svm_accr, c='r', linestyle='--', label='SVM')
+plt.text(0.5, 0.8, "%.4f" % small_svm_accr, fontsize=12, color='r')
+plt.legend(loc='upper right')
+plt.show()
