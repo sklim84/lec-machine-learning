@@ -97,7 +97,25 @@ plt.show()
 
 
 ####################
-# RQ 5&6. penalty parameter(C), number of support vectors
+# RQ 4. overfitting (layers: 2, neurons: 64)
+# - learning algorithm : adam
+# - learning algorithm : relu
+####################
+df_overfitting = pd.read_csv('./results/mlp_overfitting.csv')
+print(df_overfitting)
+epochs = df_overfitting['epoch'].to_list()
+loss_list = df_overfitting['loss'].to_list()
+# Training loss did not improve more than tol=0.000100 for 10 consecutive epochs. Stopping.
+plt.axvline(x=max(epochs)-10, c='r', linestyle='--')
+plt.text(200, 1.5, 'training loss \ndid not improve', fontsize=10, color='r')
+plt.xlabel('epochs')
+plt.xticks([1, 100, 200, max(epochs) - 10])
+plt.ylabel('Loss')
+plt.plot(epochs, loss_list)
+plt.show()
+
+####################
+# RQ 6&7. penalty parameter(C), number of support vectors
 # - kernel function : rbf
 ####################
 df_rbf_penalty_accr = pd.read_csv('./results/svm_rbf_penalty_accr.csv')
@@ -121,7 +139,7 @@ plt.plot(penalties, rbf_penalty_accr_num_sv, color='g')
 plt.show()
 
 ####################
-# RQ 8. extremely small training dataset (layers: 2, neurons: 64)
+# RQ 9. extremely small training dataset (layers: 2, neurons: 64)
 # - learning algorithm : adam(lr=0.001)
 # - activation function : relu
 ####################
