@@ -3,18 +3,11 @@ from _datasets import data_loader
 import pandas as pd
 import time
 
-####################
-# Research question
-# 1. How does the choice of the kernel function and its parameter(s) influence the performance?
-# 2. How does the choice of the penalty parameter influence the performance?
-# 3. How many support vectors are obtained?
-####################
-
 # 학습/테스트 데이터 생성
 train_data, train_label, test_data, test_label = data_loader.load()
 
 ####################
-# RQ 4. kernel function and its parameter(s)
+# RQ 5. kernel function and its parameter(s)
 # - linear
 # - poly
 #   - degree(def=3), gamma(def=scale, auto), coef0(def=0.0)
@@ -52,7 +45,7 @@ df_kernel_accr.to_csv('./results/svm_kernel_accr.csv', index=False)
 
 
 ####################
-# RQ 5&6. penalty parameter(C), number of support vectors
+# RQ 6&7. penalty parameter(C), number of support vectors
 # - kernel function : rbf
 ####################
 penalties = [1e-3, 1e-2, 1e-1, 1e-0, 1e+1, 1e+2, 1e+3]
@@ -76,7 +69,7 @@ df_penalty_accr.to_csv('./results/svm_rbf_penalty_accr.csv', index=False)
 
 
 ####################
-# RQ 8. extremely small training dataset
+# RQ 9. extremely small training dataset
 # - kernel function : rbf
 # - penalty parameter(C) : 1e-0
 ####################
