@@ -4,13 +4,6 @@ from _datasets import data_loader
 import pandas as pd
 import time
 
-####################
-# Research question
-# 1. How does the choice of the structure influence the performance?
-# 2. How does the choice of the activation function influence the performance?
-# 3. How does the choice of the learning algorithm influence the performance?
-####################
-
 # train/test 데이터 생성
 train_data, train_label, test_data, test_label = data_loader.load()
 
@@ -186,7 +179,24 @@ print(df_adam_accr)
 df_adam_accr.to_csv('./results/mlp_adam_accr_{}_{}.csv'.format(num_layers, num_neurons), index=False)
 
 ####################
-# RQ 8. extremely small training dataset (layers: 2, neurons: 64)
+# RQ 4. overfitting (layers: 2, neurons: 64)
+# - learning algorithm : adam
+# - learning algorithm : relu
+####################
+num_layers, num_neurons, num_epoch = 2, 64, 500
+mlp_model = MLPClassifier(verbose=True, hidden_layer_sizes=(num_layers, num_neurons),
+                          activation='relu',
+                          solver='adam',
+                          # early_stopping=True,
+                          max_iter=num_epoch)
+mlp_model = mlp_model.fit(train_data, train_label)
+train_accr = mlp_model.score(train_data, train_label)
+test_accr = mlp_model.score(test_data, test_label)
+print('train accuracy: {}'.format(train_accr))
+print('test accuracy: {}'.format(test_accr))
+
+####################
+# RQ 9. extremely small training dataset (layers: 2, neurons: 64)
 # - learning algorithm : adam(lr=0.001)
 # - activation function : relu
 ####################
