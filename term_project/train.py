@@ -5,6 +5,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import balanced_accuracy_score
 from sklearn.svm import SVC
+from sklearn.preprocessing import StandardScaler
 
 # pip install xgboost
 import xgboost
@@ -18,32 +19,39 @@ from catboost import CatBoostClassifier, Pool
 # Load training data
 ####################
 
-feature_names = ['age', 'sex', 'education', 'marital status', 'card limit']
-feature_names.extend(['use_' + str(i) for i in range(1, 7)])
-feature_names.extend(['pay_' + str(i) for i in range(1, 7)])
+
+feature_names = ['age', 'sex', 'education', 'marital_status', 'card_limit']
+feature_use = ['use_' + str(i) for i in range(1, 7)]
+feature_pay = ['pay_' + str(i) for i in range(1, 7)]
+feature_names.extend(feature_use)
+feature_names.extend(feature_pay)
+feature_names_categorical = ['sex', 'education', 'marital_status']
+feature_names_numerical = ['age', 'card_limit']
+feature_names_numerical.extend(feature_use)
+feature_names_numerical.extend(feature_pay)
 df_input_base = pd.read_table('./_datasets/train_input.txt', delimiter=',', header=None, names=feature_names)
-print(df_input_base)
+target = np.loadtxt('./_datasets/train_target.txt', dtype=int)
+
 
 ####################
 # 1. 주어진 데이터를 이해하기 위한 각종 분석
 ####################
 
 # 1) Feature별 데이터 분포 확인
-fig, axs = plt.subplots(5, 4)
-plt.subplots_adjust(hspace=0.5, wspace=0.3)
-fig.set_figheight(12)
-fig.set_figwidth(12)
-categorical_feature_names = ['sex', 'education', 'marital status']
-for index, feature_name in enumerate(feature_names):
-    i_row = int(np.floor((index / 4) % 5))
-    i_col = index % 4
-    axs[i_row, i_col].set_title(feature_name)
-    axs[i_row, i_col].hist(df_input_base[feature_name], alpha=0.4, align='mid', color='green')
-
-    if feature_name in categorical_feature_names:
-        unique_values = sorted(df_input_base[feature_name].unique())
-        axs[i_row, i_col].set_xticks(unique_values)
-plt.savefig('./results/data_distribution.png')
+# fig, axs = plt.subplots(5, 4)
+# plt.subplots_adjust(hspace=0.5, wspace=0.3)
+# fig.set_figheight(12)
+# fig.set_figwidth(12)
+# for index, feature_name in enumerate(feature_names):
+#     i_row = int(np.floor((index / 4) % 5))
+#     i_col = index % 4
+#     axs[i_row, i_col].set_title(feature_name)
+#     axs[i_row, i_col].hist(df_input_base[feature_name], alpha=0.4, align='mid', color='green')
+#
+#     if feature_name in feature_names_categorical:
+#         unique_values = sorted(df_input_base[feature_name].unique())
+#         axs[i_row, i_col].set_xticks(unique_values)
+# plt.savefig('./results/data_distribution.png')
 
 
 '''
@@ -66,27 +74,54 @@ https://dacon.io/competitions/official/235713/codeshare/2768?page=1&dtype=recent
 # 2. 데이터에 대한 적절한 처리 및 특징 추출 방안
 ####################
 
-# 2) Permutation feature importance : https://sarah0518.tistory.com/53
-
 # 1) Feature 값 치환
-df_input_pp = df_input_base.copy()
+df_input_fe = df_input_base.copy()
 # 최종학력 : 1,2,3,4 이외 값은 4(기타)로 변경
-df_input_pp['education'] = df_input_pp['education'].map(lambda x: 4 if x not in [1, 2, 3, 4] else x)
+df_input_fe['education'] = df_input_fe['education'].map(lambda x: 4 if x not in [1, 2, 3, 4] else x)
 # 결혼여부 : 1,2,3 이외 값은 3(기타)로 변경
-df_input_pp['marital status'] = df_input_pp['marital status'].map(lambda x: 3 if x not in [1, 2, 3] else x)
+df_input_fe['marital_status'] = df_input_fe['marital_status'].map(lambda x: 3 if x not in [1, 2, 3] else x)
 
-# 2) Feature 추가 : 과거 6개월간 청구대금/납부금액 → 이용금액(연단위 환산), 연체회차, 연체금액
+# TODO use / card_limit 비교
 
+# 2) Feature 추가 및 삭제 : 과거 6개월간 청구대금/납부금액 → 이용금액, 연체회차, 연체금액
+# np_use = df_input_fe[feature_use].to_numpy()
+# np_pay = df_input_fe[feature_pay].to_numpy()
+# # 연체회차 추가
+# np_overdue = np_use - np_pay
+# np_overdue[np_overdue > 0] = 1
+# np_overdue[np_overdue <= 0] = 0
+# df_input_fe['overdue_num'] = np.sum(np_overdue, axis=1)
+# # 이용금액 추가
+# df_input_fe['use_amt'] = np.sum(np_use, axis=1)
+# # 연체금액 추가
+# np_overdue_amt = np.sum(np_use - np_pay, axis=1)
+# np_overdue_amt[np_overdue_amt > 0] = 0
+# df_input_fe['overdue_amt'] = abs(np_overdue_amt)
+# feature_names_numerical.extend(['overdue_num', 'use_amt', 'overdue_amt'])
+
+# # 과거 6개월간 청구대금/납부금액 삭제
+# df_input_fe.drop(feature_use, axis=1, inplace=True)
+# df_input_fe.drop(feature_pay, axis=1, inplace=True)
+# feature_names_numerical.remove(feature_use)
+# feature_names_numerical.remove(feature_pay)
+
+# TODO feature scaling
+scaler = StandardScaler()
+df_input_fe[feature_names_numerical] = scaler.fit_transform(df_input_fe[feature_names_numerical])
+
+# TODO Permutation feature importance : https://sarah0518.tistory.com/53
 
 # 3. 데이터셋 활용 방안(train data 적음, balance 맞지 않음)
 # 4. 불균형이 심한 데이터를 처리 및 학습하기 위한 방안
 # TODO oversampling
 
 
-
 ####################
 # Model Training
 ####################
+
+train_input, valid_input, train_target, valid_target = train_test_split(df_input_fe.to_numpy(), target, test_size=0.33,
+                                                                        random_state=42)
 
 # 5. 2종 이상의 모델 설꼐 및 성능 비교
 
@@ -127,6 +162,7 @@ df_input_pp['marital status'] = df_input_pp['marital status'].map(lambda x: 3 if
 # pred_target = cat_model.predict(valid_input)
 # b_accr = balanced_accuracy_score(valid_target, pred_target)
 # print('balanced accuracy: {}'.format(b_accr))
+
 
 # FIXME Idea
 # Ensemble : XGBoost, LightGBM, CatBoost
