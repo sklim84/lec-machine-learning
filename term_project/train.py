@@ -20,6 +20,11 @@ from xgboost import XGBClassifier
 from catboost import CatBoostClassifier, Pool
 from enum import Enum
 from sklearn.decomposition import PCA
+from imblearn.over_sampling import RandomOverSampler
+from imblearn.over_sampling import SMOTE
+from imblearn.over_sampling import SMOTENC
+from imblearn.over_sampling import ADASYN
+from collections import Counter
 
 
 # 실행모드
@@ -52,6 +57,51 @@ def data_distribution(data):
             axs[i_row, i_col].set_xticks(unique_values)
     plt.savefig('./results/data_distribution.png')
 
+# 데이터 전처리
+def data_preprocessing(data):
+    print('##### number of data before preprocessing: {}'.format(data.shape[0]))
+    result = []
+    data_pp = data.copy()
+
+    # 최종학력 : 1,2,3,4 이외 값 데이터 삭제
+    fault_edu = data_pp[~data_pp['education'].isin([1, 2, 3, 4])].index
+    print('\tremove education data: {} rows'.format(len(fault_edu)))
+    data_pp.drop(fault_edu, inplace=True)
+    data_pp.reset_index(drop=True, inplace=True)
+    result.append(('education', len(fault_edu)))
+
+    # 결혼여부 : 1,2,3 이외 값 데이터 삭제
+    fault_ms = data_pp[~data_pp['marital_status'].isin([1, 2, 3])].index
+    print('\tremove marital status data: {} rows'.format(len(fault_ms)))
+    data_pp.drop(fault_ms, inplace=True)
+    data_pp.reset_index(drop=True, inplace=True)
+    result.append(('marital_status', len(fault_ms)))
+
+    # 과거 6개월간 월별 청구 대금 : 음수(-) 또는 신용카드 한도액 초과 시 데이터 삭제
+    # data_fe[feature_names_use] = abs(data_fe[feature_names_use])
+    for feature_name_use in feature_names_use:
+        fault_use = data_pp[(data_pp[feature_name_use] < 0) | (data_pp[feature_name_use] > data_pp['card_limit'])].index
+        if len(fault_use) != 0:
+            print('\tremove {} data: {} rows'.format(feature_name_use, len(fault_use)))
+            data_pp.drop(fault_use, inplace=True)
+            data_pp.reset_index(drop=True, inplace=True)
+            result.append((feature_name_use, len(fault_use)))
+
+    # 과거 6개월간 월별 납부 금액 : 음수(-) 데이터 삭제
+    # data_fe[feature_names_pay] = abs(data_fe[feature_names_pay])
+    for feature_name_pay in feature_names_pay:
+        fault_pay = data_pp[data_pp[feature_name_pay] < 0].index
+        if len(fault_pay) != 0:
+            print('\tremove {} data: {} rows'.format(feature_name_pay, len(fault_pay)))
+            data_pp.drop(fault_pay, inplace=True)
+            data_pp.reset_index(drop=True, inplace=True)
+            result.append((feature_name_pay, len(fault_pay)))
+
+    result = pd.DataFrame(result, columns=['feature', 'number of removed data'])
+    result.to_csv('./results/data_preprocessing.csv')
+    print('##### number of data after preprocessing: {}'.format(data_pp.shape[0]))
+
+    return data_pp
 
 # feature 중요도 계산
 def feature_importance(model, x, y, feature_names, postfix=None):
@@ -84,7 +134,8 @@ def feature_importance(model, x, y, feature_names, postfix=None):
 
 
 # 실행모드
-exe_mode = EXEMODE.FINAL
+exe_mode = EXEMODE.ALL
+
 ####################
 # 1. 주어진 데이터를 이해하기 위한 각종 분석
 ####################
@@ -100,7 +151,7 @@ feature_names_numerical.extend(feature_names_pay)
 data_base = pd.read_table('./_datasets/train_input.txt', delimiter=',', header=None, names=feature_names)
 data_base['target'] = np.loadtxt('./_datasets/train_target.txt', dtype=int)
 
-# 1) Feature별 데이터 분포 확인
+# 1) 데이터 분포 확인
 if exe_mode == EXEMODE.ALL:
     data_distribution(data_base)
 
@@ -108,29 +159,15 @@ if exe_mode == EXEMODE.ALL:
 # 2. 데이터에 대한 적절한 처리 및 특징 추출 방안
 ####################
 
-# 1) 데이터 치환 및 삭제
-data_fe = data_base.copy()
-# 최종학력 : 1,2,3,4 이외 값 → 4(기타)
-data_fe['education'] = data_fe['education'].map(lambda x: 4 if x not in [1, 2, 3, 4] else x)
-# 결혼여부 : 1,2,3 이외 값 → 3(기타)
-data_fe['marital_status'] = data_fe['marital_status'].map(lambda x: 3 if x not in [1, 2, 3] else x)
-# 과거 6개월간 월별 청구 대금 : 음수 → 양수
-data_fe[feature_names_use] = abs(data_fe[feature_names_use])
-# 과거 6개월간 월별 납부 금액 : 음수 → 양수
-data_fe[feature_names_pay] = abs(data_fe[feature_names_pay])
-# 과거 6개월간 월별 청구 대금 : 신용카드 한도액 초과 시 데이터 삭제
-comp_use_limit = np.expand_dims(data_fe['card_limit'].to_numpy(), axis=1)
-comp_use_limit = np.tile(comp_use_limit, reps=[1, len(feature_names_use)])  # 6개 열로 복사
-comp_use_limit = comp_use_limit - data_fe[feature_names_use].to_numpy()
-data_fe.drop(np.where(comp_use_limit < 0)[0], inplace=True)
-data_fe.reset_index(drop=True, inplace=True)
+# 1) 데이터 전처리
+data_pp = data_preprocessing(data_base)
 
 # 2) Feature 중요도 평가
 if exe_mode == EXEMODE.ALL:
     # SVM
     svc_model = SVC(kernel='rbf')
-    input = data_fe.drop(['target'], axis=1).to_numpy()
-    target = data_fe['target'].to_numpy()
+    input = data_pp.drop(['target'], axis=1).to_numpy()
+    target = data_pp['target'].to_numpy()
     feature_importance(svc_model, input, target, feature_names)
 
     # XGBoost
@@ -142,103 +179,131 @@ if exe_mode == EXEMODE.ALL:
     cat_model = CatBoostClassifier()
     feature_importance(cat_model, input, target, feature_names)
 
-# 3) Feature selection : 삭제(성별, 최종학력, 결혼여부), 추가(이용금액, 납부금액, 연체회차, 연체금액)
-# data_fe.drop(['sex'], axis=1, inplace=True)
-# data_fe.drop(['education'], axis=1, inplace=True)
-# data_fe.drop(['marital_status'], axis=1, inplace=True)
-#
-# np_use = data_fe[feature_names_use].to_numpy()
-# np_pay = data_fe[feature_names_pay].to_numpy()
-# # 연체회차 추가
-# np_overdue = np_use - np_pay
-# np_overdue[np_overdue > 0] = 1
-# np_overdue[np_overdue <= 0] = 0
-# data_fe['overdue_num'] = np.sum(np_overdue, axis=1)
-# feature_names.extend(['overdue_num'])
-# feature_names_numerical.extend(['overdue_num'])
-# # 납부금액 추가
-# np_pay = data_fe[feature_names_pay].to_numpy()
-# data_fe['pay_amt'] = np.sum(np_pay, axis=1)
-# feature_names.extend(['pay_amt'])
-# feature_names_numerical.extend(['pay_amt'])
-# # 이용금액 추가
-# data_fe['use_amt'] = np.sum(np_use, axis=1)
-# feature_names.extend(['use_amt'])
-# feature_names_numerical.extend(['use_amt'])
-# # 연체금액 추가
-# np_overdue_amt = np.sum(np_use - np_pay, axis=1)
-# np_overdue_amt[np_overdue_amt > 0] = 0
-# data_fe['overdue_amt'] = abs(np_overdue_amt)
-# feature_names.extend(['overdue_amt'])
-# feature_names_numerical.extend(['overdue_amt'])
+# 3) Feature selection : 삭제(성별, 최종학력, 결혼여부), 추가(이용금액, 납부금액, 연체회차, 연체금액), 삭제(과거 6개월간 청구대금, 납부금액)
+if exe_mode == EXEMODE.ALL:
+    data_fs = data_pp.copy()
 
-# 3) Feature selection : 삭제(과거 6개월간 청구대금, 납부금액)
-# data_fe.drop(feature_names_use, axis=1, inplace=True)
-# data_fe.drop(feature_names_pay, axis=1, inplace=True)
-# feature_names_numerical = [ele for ele in feature_names_numerical if ele not in feature_names_use]
-# feature_names_numerical = [ele for ele in feature_names_numerical if ele not in feature_names_pay]
+    data_fs.drop(['sex'], axis=1, inplace=True)
+    data_fs.drop(['education'], axis=1, inplace=True)
+    data_fs.drop(['marital_status'], axis=1, inplace=True)
+
+    np_use = data_fs[feature_names_use].to_numpy()
+    np_pay = data_fs[feature_names_pay].to_numpy()
+    # 연체회차 추가
+    np_overdue = np_use - np_pay
+    np_overdue[np_overdue > 0] = 1
+    np_overdue[np_overdue <= 0] = 0
+    data_fs['overdue_num'] = np.sum(np_overdue, axis=1)
+    feature_names.extend(['overdue_num'])
+    feature_names_numerical.extend(['overdue_num'])
+    # 납부금액 추가
+    np_pay = data_fs[feature_names_pay].to_numpy()
+    data_fs['pay_amt'] = np.sum(np_pay, axis=1)
+    feature_names.extend(['pay_amt'])
+    feature_names_numerical.extend(['pay_amt'])
+    # 이용금액 추가
+    data_fs['use_amt'] = np.sum(np_use, axis=1)
+    feature_names.extend(['use_amt'])
+    feature_names_numerical.extend(['use_amt'])
+    # 연체금액 추가
+    np_overdue_amt = np.sum(np_use - np_pay, axis=1)
+    np_overdue_amt[np_overdue_amt > 0] = 0
+    data_fs['overdue_amt'] = abs(np_overdue_amt)
+    feature_names.extend(['overdue_amt'])
+    feature_names_numerical.extend(['overdue_amt'])
+
+    # 과거 6개월간 청구대금/납부금액 삭제
+    data_fs.drop(feature_names_use, axis=1, inplace=True)
+    data_fs.drop(feature_names_pay, axis=1, inplace=True)
+    feature_names_numerical = [ele for ele in feature_names_numerical if ele not in feature_names_use]
+    feature_names_numerical = [ele for ele in feature_names_numerical if ele not in feature_names_pay]
 
 # 4) Feature scaling
 # Scale에 따라 주성분의 설명 가능한 분산량이 왜곡될 수 있기 때문에 PCA 수행 전 표준화 필요
 scaler = StandardScaler()
-data_fe[feature_names_numerical] = scaler.fit_transform(data_fe[feature_names_numerical])
+data_pp[feature_names_numerical] = scaler.fit_transform(data_pp[feature_names_numerical])
 
 # 5) Feature extraction
-# TODO PCA (visualize : https://plotly.com/python/pca-visualization/)
-pca = PCA()
-pcs = pca.fit_transform(data_fe.drop(['target'], axis=1))
-labels = {
-    str(i): f"PC {i + 1} ({var:.1f}%)"
-    for i, var in enumerate(pca.explained_variance_ratio_ * 100)
-}
-fig = px.scatter_matrix(pcs, labels=labels, dimensions=range(4), color=data_fe["target"])
-fig.update_traces(diagonal_visible=False)
-fig.write_image("./results/pca_visualize.png")
-print(pca.explained_variance_ratio_)
+# PCA (visualize : https://plotly.com/python/pca-visualization/)
+if exe_mode == EXEMODE.ALL:
+    pca = PCA()
+    pcs = pca.fit_transform(data_pp.drop(['target'], axis=1))
+    labels = {
+        str(i): f"PC {i + 1} ({var:.1f}%)"
+        for i, var in enumerate(pca.explained_variance_ratio_ * 100)
+    }
+    fig = px.scatter_matrix(pcs, labels=labels, dimensions=range(4), color=data_pp["target"])
+    fig.update_traces(diagonal_visible=False)
+    fig.write_html("./results/pca_visualize.html")
+    print(pca.explained_variance_ratio_)
 
-# TODO LDA
-
+####################
 # 3. 데이터셋 활용 방안(train data 적음, balance 맞지 않음)
 # 4. 불균형이 심한 데이터를 처리 및 학습하기 위한 방안
-# TODO oversampling
+####################
+
+input = data_pp.drop(['target'], axis=1).to_numpy()
+target = data_pp['target'].to_numpy()
+
+# 1) RandomOverSampler
+# ros = RandomOverSampler(sampling_strategy='auto', random_state=42)
+# input_over, target_over = ros.fit_resample(input, target)
+# print('Original dataset shape %s' % Counter(target))
+# print('Resampled  dataset shape %s' % Counter(target_over))
+
+# 2) Synthetic Minority Over-sampling Technique (SMOTE)
+# TODO sampling_strategy = 'minority', 'not minority', 'not majority', 'all', 'auto'(='not majority')
+# TODO n_neighbors = default 5
+# smote = SMOTE(sampling_strategy='auto', random_state=42)
+# input_over, target_over = smote.fit_resample(input, target)
+# print('Original dataset shape %s' % Counter(target))
+# print('Resampled  dataset shape %s' % Counter(target_over))
+
+# 3) SMOTE-Nominal Continuous (SMOTENC)
+# smotenc = SMOTENC(sampling_strategy='auto', random_state=42, categorical_features=[1, 2, 3])
+# input_over, target_over = smotenc.fit_resample(input, target)
+# print('Original dataset shape %s' % Counter(target))
+# print('Resampled  dataset shape %s' % Counter(target_over))
+
+# 4) ADAptive SYNthetic oversampling (ADASYN)
+# adasyn = ADASYN(sampling_strategy='auto', random_state=42)
+# input_over, target_over = adasyn.fit_resample(input, target)
+# print('Original dataset shape %s' % Counter(target))
+# print('Resampled  dataset shape %s' % Counter(target_over))
+
+# 5) Borderline-SMOTE (B-SMOTE)
 
 
 ####################
-# Model Training
+# 5. 2종 이상의 모델 설계 및 성능 비교 : SVM, XGBoost, CatBoost, TODO MLP
+# 6. 성능을 향상시키기 위한 각종 아이디어 - Ensemble
 ####################
+train_input, valid_input, train_target, valid_target \
+    = train_test_split(input, target, test_size=0.33, random_state=42)
 
-input = data_fe.drop(['target'], axis=1).to_numpy()
-target = data_fe['target'].to_numpy()
-train_input, valid_input, train_target, valid_target = train_test_split(input, target, test_size=0.33,
-                                                                        random_state=42)
+# TODO 파라미터 최적화 : Scikit-learn GridSearchCV
 
-# TODO 5. 2종 이상의 모델 설계 및 성능 비교
-# # SVM
-# svc_model = SVC(kernel='rbf')
-# svc_model.fit(train_input, train_target)
-# pred_target = svc_model.predict(valid_input)
-# b_accr = balanced_accuracy_score(valid_target, pred_target)
-# print('##### SVM balanced accuracy: {}'.format(b_accr))
-#
-# # XGBoost
-# xgb_model = XGBClassifier(booster='gbtree', max_depth=10, gamma=0.5, learning_rate=0.01, n_estimators=100, random_state=99)
-# xgb_model = xgb_model.fit(train_input, train_target)
-# pred_target = xgb_model.predict(valid_input)
-# b_accr = balanced_accuracy_score(valid_target, pred_target)
-# print('##### XGB balanced accuracy: {}'.format(b_accr))
-#
-# # CatBoost
-# cat_model = CatBoostClassifier()
-# cat_model.fit(train_input, train_target, use_best_model=True, early_stopping_rounds=100, verbose=100)
-# pred_target = cat_model.predict(valid_input)
-# b_accr = balanced_accuracy_score(valid_target, pred_target)
-# print('##### CB balanced accuracy: {}'.format(b_accr))
+# SVM
+svc_model = SVC(kernel='rbf')
+svc_model.fit(train_input, train_target)
+pred_target = svc_model.predict(valid_input)
+b_accr = balanced_accuracy_score(valid_target, pred_target)
+print('##### SVM balanced accuracy: {}'.format(b_accr))
 
-# TODO 6. 성능을 향상시키기 위한 각종 아이디어
+# XGBoost
+xgb_model = XGBClassifier(booster='gbtree', max_depth=10, gamma=0.5, learning_rate=0.01, n_estimators=100,
+                          random_state=99)
+xgb_model = xgb_model.fit(train_input, train_target)
+pred_target = xgb_model.predict(valid_input)
+b_accr = balanced_accuracy_score(valid_target, pred_target)
+print('##### XGB balanced accuracy: {}'.format(b_accr))
 
-# FIXME Idea
-# Ensemble : XGBoost, LightGBM, CatBoost
-# 파라미터 최적화 : Scikit-learn GridSearchCV
+# CatBoost
+cat_model = CatBoostClassifier()
+cat_model.fit(train_input, train_target, use_best_model=True, early_stopping_rounds=100, verbose=100)
+pred_target = cat_model.predict(valid_input)
+b_accr = balanced_accuracy_score(valid_target, pred_target)
+print('##### CB balanced accuracy: {}'.format(b_accr))
 
 ####################
 # Save model
