@@ -10,7 +10,6 @@ from sklearn.metrics import balanced_accuracy_score
 from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler
 from sklearn.inspection import permutation_importance
-from eli5.sklearn import PermutationImportance
 # pip install xgboost
 import xgboost
 from xgboost import XGBClassifier
@@ -64,6 +63,7 @@ def data_preprocessing(data):
     data_pp = data.copy()
 
     # 최종학력 : 1,2,3,4 이외 값 데이터 삭제
+    # data_pp['education'] = data_pp['education'].map(lambda x: 4 if x not in [1, 2, 3, 4] else x)
     fault_edu = data_pp[~data_pp['education'].isin([1, 2, 3, 4])].index
     print('\tremove education data: {} rows'.format(len(fault_edu)))
     data_pp.drop(fault_edu, inplace=True)
@@ -71,6 +71,7 @@ def data_preprocessing(data):
     result.append(('education', len(fault_edu)))
 
     # 결혼여부 : 1,2,3 이외 값 데이터 삭제
+    # data_pp['marital_status'] = data_pp['marital_status'].map(lambda x: 3 if x not in [1, 2, 3] else x)
     fault_ms = data_pp[~data_pp['marital_status'].isin([1, 2, 3])].index
     print('\tremove marital status data: {} rows'.format(len(fault_ms)))
     data_pp.drop(fault_ms, inplace=True)
@@ -78,7 +79,6 @@ def data_preprocessing(data):
     result.append(('marital_status', len(fault_ms)))
 
     # 과거 6개월간 월별 청구 대금 : 음수(-) 또는 신용카드 한도액 초과 시 데이터 삭제
-    # data_fe[feature_names_use] = abs(data_fe[feature_names_use])
     for feature_name_use in feature_names_use:
         fault_use = data_pp[(data_pp[feature_name_use] < 0) | (data_pp[feature_name_use] > data_pp['card_limit'])].index
         if len(fault_use) != 0:
@@ -86,9 +86,15 @@ def data_preprocessing(data):
             data_pp.drop(fault_use, inplace=True)
             data_pp.reset_index(drop=True, inplace=True)
             result.append((feature_name_use, len(fault_use)))
+    # data_pp[feature_names_use] = abs(data_pp[feature_names_use])
+    # comp_use_limit = np.expand_dims(data_pp['card_limit'].to_numpy(), axis=1)
+    # comp_use_limit = np.tile(comp_use_limit, reps=[1, len(feature_names_use)])  # 6개 열로 복사
+    # comp_use_limit = comp_use_limit - data_pp[feature_names_use].to_numpy()
+    # data_pp.drop(np.where(comp_use_limit < 0)[0], inplace=True)
+    # data_pp.reset_index(drop=True, inplace=True)
 
     # 과거 6개월간 월별 납부 금액 : 음수(-) 데이터 삭제
-    # data_fe[feature_names_pay] = abs(data_fe[feature_names_pay])
+    # data_pp[feature_names_pay] = abs(data_pp[feature_names_pay])
     for feature_name_pay in feature_names_pay:
         fault_pay = data_pp[data_pp[feature_name_pay] < 0].index
         if len(fault_pay) != 0:
@@ -134,7 +140,7 @@ def feature_importance(model, x, y, feature_names, postfix=None):
 
 
 # 실행모드
-exe_mode = EXEMODE.ALL
+exe_mode = EXEMODE.FINAL
 
 ####################
 # 1. 주어진 데이터를 이해하기 위한 각종 분석
@@ -254,10 +260,10 @@ target = data_pp['target'].to_numpy()
 # 2) Synthetic Minority Over-sampling Technique (SMOTE)
 # TODO sampling_strategy = 'minority', 'not minority', 'not majority', 'all', 'auto'(='not majority')
 # TODO n_neighbors = default 5
-# smote = SMOTE(sampling_strategy='auto', random_state=42)
-# input_over, target_over = smote.fit_resample(input, target)
-# print('Original dataset shape %s' % Counter(target))
-# print('Resampled  dataset shape %s' % Counter(target_over))
+smote = SMOTE(sampling_strategy='auto', random_state=42)
+input_over, target_over = smote.fit_resample(input, target)
+print('Original dataset shape %s' % Counter(target))
+print('Resampled  dataset shape %s' % Counter(target_over))
 
 # 3) SMOTE-Nominal Continuous (SMOTENC)
 # smotenc = SMOTENC(sampling_strategy='auto', random_state=42, categorical_features=[1, 2, 3])
@@ -279,7 +285,7 @@ target = data_pp['target'].to_numpy()
 # 6. 성능을 향상시키기 위한 각종 아이디어 - Ensemble
 ####################
 train_input, valid_input, train_target, valid_target \
-    = train_test_split(input, target, test_size=0.33, random_state=42)
+    = train_test_split(input_over, target_over, test_size=0.33, random_state=42)
 
 # TODO 파라미터 최적화 : Scikit-learn GridSearchCV
 

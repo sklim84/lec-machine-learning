@@ -59,6 +59,10 @@ Resampled  dataset shape Counter({1: 13738, 0: 13738})
 ##### SVM balanced accuracy: 0.6608783765147499
 ##### XGB balanced accuracy: 0.7735230448525661
 ##### CB balanced accuracy: 0.853974564611645
+# 전처리(데이터 삭제) + SMOTE
+##### SVM balanced accuracy: 0.664084005461481
+##### XGB balanced accuracy: 0.7826154300916346
+##### CB balanced accuracy: 0.8624946300128091
 
 # SMOTENC
 Original dataset shape Counter({0: 13738, 1: 3636})
