@@ -56,6 +56,7 @@ def data_distribution(data):
             axs[i_row, i_col].set_xticks(unique_values)
     plt.savefig('./results/data_distribution.png')
 
+
 # 데이터 전처리
 def data_preprocessing(data):
     print('##### number of data before preprocessing: {}'.format(data.shape[0]))
@@ -108,6 +109,7 @@ def data_preprocessing(data):
     print('##### number of data after preprocessing: {}'.format(data_pp.shape[0]))
 
     return data_pp
+
 
 # feature 중요도 계산
 def feature_importance(model, x, y, feature_names, postfix=None):
@@ -226,12 +228,13 @@ if exe_mode == EXEMODE.ALL:
 
 # 4) Feature scaling
 # Scale에 따라 주성분의 설명 가능한 분산량이 왜곡될 수 있기 때문에 PCA 수행 전 표준화 필요
+# TODO scaling 효과
 scaler = StandardScaler()
 data_pp[feature_names_numerical] = scaler.fit_transform(data_pp[feature_names_numerical])
 
 # 5) Feature extraction
 # PCA (visualize : https://plotly.com/python/pca-visualization/)
-if exe_mode == EXEMODE.ALL:
+if exe_mode == EXEMODE.FINAL:
     pca = PCA()
     pcs = pca.fit_transform(data_pp.drop(['target'], axis=1))
     labels = {
@@ -260,10 +263,12 @@ target = data_pp['target'].to_numpy()
 # 2) Synthetic Minority Over-sampling Technique (SMOTE)
 # TODO sampling_strategy = 'minority', 'not minority', 'not majority', 'all', 'auto'(='not majority')
 # TODO n_neighbors = default 5
-smote = SMOTE(sampling_strategy='auto', random_state=42)
+# sampling_strategy = {0: 20000, 1: 20000}
+sampling_strategy = 'not majority'
+smote = SMOTE(sampling_strategy=sampling_strategy, random_state=42)
 input_over, target_over = smote.fit_resample(input, target)
 print('Original dataset shape %s' % Counter(target))
-print('Resampled  dataset shape %s' % Counter(target_over))
+print('Resampled dataset shape %s' % Counter(target_over))
 
 # 3) SMOTE-Nominal Continuous (SMOTENC)
 # smotenc = SMOTENC(sampling_strategy='auto', random_state=42, categorical_features=[1, 2, 3])
@@ -290,15 +295,16 @@ train_input, valid_input, train_target, valid_target \
 # TODO 파라미터 최적화 : Scikit-learn GridSearchCV
 
 # SVM
-svc_model = SVC(kernel='rbf')
+svc_model = SVC()
 svc_model.fit(train_input, train_target)
 pred_target = svc_model.predict(valid_input)
 b_accr = balanced_accuracy_score(valid_target, pred_target)
 print('##### SVM balanced accuracy: {}'.format(b_accr))
 
 # XGBoost
-xgb_model = XGBClassifier(booster='gbtree', max_depth=10, gamma=0.5, learning_rate=0.01, n_estimators=100,
-                          random_state=99)
+# xgb_model = XGBClassifier(booster='gbtree', max_depth=10, gamma=0.5, learning_rate=0.01, n_estimators=100,
+#                           random_state=99)
+xgb_model = XGBClassifier(random_state=42)
 xgb_model = xgb_model.fit(train_input, train_target)
 pred_target = xgb_model.predict(valid_input)
 b_accr = balanced_accuracy_score(valid_target, pred_target)
@@ -306,7 +312,8 @@ print('##### XGB balanced accuracy: {}'.format(b_accr))
 
 # CatBoost
 cat_model = CatBoostClassifier()
-cat_model.fit(train_input, train_target, use_best_model=True, early_stopping_rounds=100, verbose=100)
+# cat_model.fit(train_input, train_target, use_best_model=True, early_stopping_rounds=100, verbose=100)
+cat_model.fit(train_input, train_target, verbose=100)
 pred_target = cat_model.predict(valid_input)
 b_accr = balanced_accuracy_score(valid_target, pred_target)
 print('##### CB balanced accuracy: {}'.format(b_accr))
