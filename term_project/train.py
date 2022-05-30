@@ -31,12 +31,11 @@ class EXEMODE(Enum):
     ALL = 0
     FINAL = 1
 
-def data_distribution(data, type='numerical', target='base'):
+# 데이터 분포 확인
+def data_distribution(data, type='numerical', about='base'):
     num_col = 3
     num_row = int(np.ceil(len(data.columns) / num_col))
-
     fig, axs = plt.subplots(num_row, num_col)
-    # plt.subplots_adjust(hspace=0.5, wspace=0.3)
     fig.set_figheight(num_row * 2.5)
     fig.set_figwidth(num_col * 4)
     for index, feature in enumerate(data.columns):
@@ -45,44 +44,17 @@ def data_distribution(data, type='numerical', target='base'):
 
         kind = 'hist' if type == 'numerical' else 'bar'
         ax = axs[i_col] if num_row == 1 else axs[i_row, i_col]
-        data[feature].value_counts().plot(ax=ax, title=feature, kind=kind)
+
+        if type == 'numerical':
+            data[feature].plot.hist(ax=ax, title=feature, alpha=0.5)
+        elif type == 'categorical':
+            data[feature].value_counts().plot(ax=ax, kind='bar', title=feature, alpha=0.5)
+
+        # data[feature].value_counts().plot(ax=ax, title=feature, kind=kind, alpha=0.5)
+        # print(data[feature].value_counts())
 
     plt.tight_layout()
-    plt.savefig('./results/data_distribution_{}_{}.png'.format(target, type))
-
-
-# 데이터 분포 확인
-# def data_distribution(data, feature_names_categorical, purpose='base'):
-#     # 정상납부 고객 정보
-#     data_normal = data[data['target'] == 0].drop(['target'], axis=1)
-#     # 연체 고객 정보
-#     data_overdue = data[data['target'] == 1].drop(['target'], axis=1)
-#
-#     # Feature별 데이터 분포 확인
-#     fig, axs = plt.subplots(5, 4)
-#     plt.subplots_adjust(hspace=0.5, wspace=0.3)
-#     fig.set_figheight(12)
-#     fig.set_figwidth(12)
-#     for index, feature_name in enumerate(data_normal.columns):
-#
-#         i_row = int(np.floor((index / 4) % 5))
-#         i_col = index % 4
-#
-#         if purpose == 'base':
-#             if feature_name in feature_names_categorical:
-#                 unique_values = sorted(data[feature_name].unique())
-#                 axs[i_row, i_col].set_xticks(unique_values)
-#         elif purpose == 'scaling':
-#             if feature_name in feature_names_categorical:
-#                 continue
-#
-#         axs[i_row, i_col].set_title(feature_name)
-#         axs[i_row, i_col].hist(data_normal[feature_name], alpha=0.4, align='mid', color='green', label='target=0')
-#         axs[i_row, i_col].hist(data_overdue[feature_name], alpha=0.4, align='mid', color='blue', label='target=1')
-#         axs[i_row, i_col].legend()
-#
-#     plt.savefig('./results/data_distribution_{}.png'.format(purpose))
-
+    plt.savefig('./results/data_distribution_{}_{}.png'.format(about, type))
 
 # 데이터 전처리
 def data_preprocessing(data):
@@ -141,12 +113,33 @@ def data_preprocessing(data):
                                                                                counter[1]))
     return data_pp
 
-# 기본 모델 생성
-def default_model():
+# 기본 모델(SVM, XGBoost, CatBoost) 학습
+def training_default_model(input, target, about='base'):
+    train_input, valid_input, train_target, valid_target \
+        = train_test_split(input, target, test_size=0.33, random_state=42)
+    # SVM
     svc_model = SVC()
+    svc_model.fit(train_input, train_target)
+    svc_pred_target = svc_model.predict(valid_input)
+    svc_b_accr = balanced_accuracy_score(valid_target, svc_pred_target)
+    # XGBoost
     xgb_model = XGBClassifier(random_state=42)
+    xgb_model = xgb_model.fit(train_input, train_target)
+    xgb_pred_target = xgb_model.predict(valid_input)
+    xgb_b_accr = balanced_accuracy_score(valid_target, xgb_pred_target)
+    # CatBoost
     cat_model = CatBoostClassifier()
-    return svc_model, xgb_model, cat_model
+    cat_model.fit(train_input, train_target, verbose=100)
+    cat_pred_target = cat_model.predict(valid_input)
+    cat_b_accr = balanced_accuracy_score(valid_target, cat_pred_target)
+
+    result = pd.DataFrame(columns=['model', 'balanced accuracy'])
+    result.loc[0] = [svc_model.__class__.__name__, svc_b_accr]
+    result.loc[1] = [xgb_model.__class__.__name__, xgb_b_accr]
+    result.loc[2] = [cat_model.__class__.__name__, cat_b_accr]
+    print('##### Model training result ({})'.format(about))
+    print(result)
+    result.to_csv('./results/balanced_accuracy_{}.csv'.format(about))
 
 # feature 중요도 계산
 def feature_importance(model, x, y, feature_names, postfix=None):
@@ -157,25 +150,25 @@ def feature_importance(model, x, y, feature_names, postfix=None):
     train_x, valid_x, train_y, valid_y = train_test_split(x, y, test_size=0.33, random_state=42)
     model.fit(train_x, train_y)
     print('complete model fit...')
-    result = permutation_importance(model, valid_x, valid_y, n_repeats=30, random_state=0, n_jobs=3)
-    sorted_idx = result.importances_mean.argsort()
+    perm_importance = permutation_importance(model, valid_x, valid_y, n_repeats=30, random_state=0, n_jobs=3)
+    sorted_idx = perm_importance.importances_mean.argsort()
     print('complete permutation importance...')
 
     # save csv
-    importances = pd.DataFrame()
-    importances['feature'] = [feature_names[index] for index in sorted_idx]
-    importances['importance'] = result.importances_mean[sorted_idx]
-    importances.sort_values(by='importance', ascending=False, inplace=True)
-    importances.to_csv('./results/feature_importance_{}.csv'.format(postfix))
-    print(importances)
+    result = pd.DataFrame()
+    result['feature'] = [feature_names[index] for index in sorted_idx]
+    result['importance'] = perm_importance.importances_mean[sorted_idx]
+    result.sort_values(by='importance', ascending=False, inplace=True)
+    result.to_csv('./results/feature_importance_{}.csv'.format(postfix))
+    print(result)
 
     # save plot
     sns.set(rc={"axes.unicode_minus": False}, style='whitegrid')
     fig, ax = plt.subplots()
-    ax.boxplot(result.importances[sorted_idx].T, vert=False, labels=[feature_names[index] for index in sorted_idx])
+    ax.boxplot(perm_importance.importances[sorted_idx].T, vert=False, labels=[feature_names[index] for index in sorted_idx])
     ax.set_title("Feature Importance ({})".format(postfix))
     fig.tight_layout()
-    plt.savefig('./results/feature_inportance_{}.png'.format(postfix))
+    plt.savefig('./results/feature_importance_{}.png'.format(postfix))
 
 
 # 실행모드
@@ -198,32 +191,41 @@ data_base['target'] = np.loadtxt('./_datasets/train_target.txt', dtype=int)
 
 # 1) 데이터 분포 확인
 if exe_mode == EXEMODE.FINAL:
-    data_distribution(data_base[feature_names_numerical], type='numerical', target='base')
-    data_distribution(data_base[feature_names_categorical], type='categorical', target='base')
+    data_distribution(data_base[feature_names_numerical], type='numerical', about='base')
+    data_distribution(data_base[feature_names_categorical], type='categorical', about='base')
+    # base 데이터 기반 기본 모델 학습
+    input = data_base.drop(['target'], axis=1).to_numpy()
+    target = data_base['target'].to_numpy()
+    training_default_model(input, target, about='base')
 
 ####################
 # 2. 데이터에 대한 적절한 처리 및 특징 추출 방안
 ####################
 
 # 1) 데이터 전처리
-data_pp = data_preprocessing(data_base)
+if exe_mode == EXEMODE.FINAL:
+    data_pp = data_preprocessing(data_base)
+    input = data_pp.drop(['target'], axis=1).to_numpy()
+    target = data_pp['target'].to_numpy()
+    training_default_model(input, target, about='preprocessed')
 
 # 2) Feature scaling
 if exe_mode == EXEMODE.FINAL:
     scaler = StandardScaler()
     data_pp[feature_names_numerical] = scaler.fit_transform(data_pp[feature_names_numerical])
-    data_distribution(data_pp[feature_names_numerical], type='numerical', target='scaled')
-
-# 3) Feature 중요도 평가
-if exe_mode == EXEMODE.FINAL:
+    data_distribution(data_pp[feature_names_numerical], type='numerical', about='scaled')
     input = data_pp.drop(['target'], axis=1).to_numpy()
     target = data_pp['target'].to_numpy()
+    training_default_model(input, target, about='scaled')
 
+# 3) Feature 중요도 평가
+if exe_mode == EXEMODE.ALL:
+    input = data_pp.drop(['target'], axis=1).to_numpy()
+    target = data_pp['target'].to_numpy()
     # 기본 모델(SVM, XGBoost, CatBoost) 이용
-    svc_model, xgb_model, cat_model = default_model()
-    feature_importance(svc_model, input, target, feature_names)
-    feature_importance(xgb_model, input, target, feature_names)
-    feature_importance(cat_model, input, target, feature_names)
+    feature_importance(SVC(), input, target, feature_names)
+    feature_importance(XGBClassifier(random_state=42), input, target, feature_names)
+    feature_importance(CatBoostClassifier(), input, target, feature_names)
 
 # 4) Feature selection : 삭제(성별, 최종학력, 결혼여부), 추가(이용금액, 납부금액, 연체회차, 연체금액), 삭제(과거 6개월간 청구대금, 납부금액)
 if exe_mode == EXEMODE.ALL:
@@ -267,7 +269,7 @@ if exe_mode == EXEMODE.ALL:
 # 5) Feature extraction (PCA)
 # 시각화 : https://plotly.com/python/pca-visualization/
 # 참고 : Scale에 따라 주성분의 설명 가능한 분산량이 왜곡될 수 있기 때문에 PCA 수행 전 표준화 필요
-if exe_mode == EXEMODE.FINAL:
+if exe_mode == EXEMODE.ALL:
     pca = PCA()
     pcs = pca.fit_transform(data_pp.drop(['target'], axis=1))
     labels = {
@@ -284,8 +286,8 @@ if exe_mode == EXEMODE.FINAL:
 # 4. 불균형이 심한 데이터를 처리 및 학습하기 위한 방안
 ####################
 
-input = data_pp.drop(['target'], axis=1).to_numpy()
-target = data_pp['target'].to_numpy()
+# input = data_pp.drop(['target'], axis=1).to_numpy()
+# target = data_pp['target'].to_numpy()
 
 # 1) RandomOverSampler
 # ros = RandomOverSampler(sampling_strategy='auto', random_state=42)
@@ -297,11 +299,11 @@ target = data_pp['target'].to_numpy()
 # TODO sampling_strategy = 'minority', 'not minority', 'not majority', 'all', 'auto'(='not majority')
 # TODO n_neighbors = default 5
 # sampling_strategy = {0: 20000, 1: 20000}
-sampling_strategy = 'not majority'
-smote = SMOTE(sampling_strategy=sampling_strategy, random_state=42)
-input_over, target_over = smote.fit_resample(input, target)
-print('Original dataset shape %s' % Counter(target))
-print('Resampled dataset shape %s' % Counter(target_over))
+# sampling_strategy = 'not majority'
+# smote = SMOTE(sampling_strategy=sampling_strategy, random_state=42)
+# input_over, target_over = smote.fit_resample(input, target)
+# print('Original dataset shape %s' % Counter(target))
+# print('Resampled dataset shape %s' % Counter(target_over))
 
 # 3) SMOTE-Nominal Continuous (SMOTENC)
 # smotenc = SMOTENC(sampling_strategy='auto', random_state=42, categorical_features=[1, 2, 3])
@@ -322,34 +324,21 @@ print('Resampled dataset shape %s' % Counter(target_over))
 # 5. 2종 이상의 모델 설계 및 성능 비교 : SVM, XGBoost, CatBoost, TODO MLP
 # 6. 성능을 향상시키기 위한 각종 아이디어 - Ensemble
 ####################
-train_input, valid_input, train_target, valid_target \
-    = train_test_split(input_over, target_over, test_size=0.33, random_state=42)
+# train_input, valid_input, train_target, valid_target = train_test_split(input_over, target_over, test_size=0.33, random_state=42)
 
 # TODO 파라미터 최적화 : Scikit-learn GridSearchCV
 
 # SVM
-svc_model = SVC()
-svc_model.fit(train_input, train_target)
-pred_target = svc_model.predict(valid_input)
-b_accr = balanced_accuracy_score(valid_target, pred_target)
-print('##### SVM balanced accuracy: {}'.format(b_accr))
+
+# MLP
 
 # XGBoost
 # xgb_model = XGBClassifier(booster='gbtree', max_depth=10, gamma=0.5, learning_rate=0.01, n_estimators=100,
 #                           random_state=99)
-xgb_model = XGBClassifier(random_state=42)
-xgb_model = xgb_model.fit(train_input, train_target)
-pred_target = xgb_model.predict(valid_input)
-b_accr = balanced_accuracy_score(valid_target, pred_target)
-print('##### XGB balanced accuracy: {}'.format(b_accr))
 
 # CatBoost
-cat_model = CatBoostClassifier()
+# cat_model = CatBoostClassifier()
 # cat_model.fit(train_input, train_target, use_best_model=True, early_stopping_rounds=100, verbose=100)
-cat_model.fit(train_input, train_target, verbose=100)
-pred_target = cat_model.predict(valid_input)
-b_accr = balanced_accuracy_score(valid_target, pred_target)
-print('##### CB balanced accuracy: {}'.format(b_accr))
 
 ####################
 # Save model
