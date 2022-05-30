@@ -31,35 +31,64 @@ class EXEMODE(Enum):
     ALL = 0
     FINAL = 1
 
+def data_distribution(data, type='numerical', target='base'):
+    num_col = 3
+    num_row = int(np.ceil(len(data.columns) / num_col))
+
+    fig, axs = plt.subplots(num_row, num_col)
+    # plt.subplots_adjust(hspace=0.5, wspace=0.3)
+    fig.set_figheight(num_row * 2.5)
+    fig.set_figwidth(num_col * 4)
+    for index, feature in enumerate(data.columns):
+        i_row = int(np.floor((index / num_col) % num_row))
+        i_col = index % num_col
+
+        kind = 'hist' if type == 'numerical' else 'bar'
+        ax = axs[i_col] if num_row == 1 else axs[i_row, i_col]
+        data[feature].value_counts().plot(ax=ax, title=feature, kind=kind)
+
+    plt.tight_layout()
+    plt.savefig('./results/data_distribution_{}_{}.png'.format(target, type))
+
 
 # 데이터 분포 확인
-def data_distribution(data):
-    # 정상납부 고객 정보
-    data_normal = data[data['target'] == 0].drop(['target'], axis=1)
-    # 연체 고객 정보
-    data_overdue = data[data['target'] == 1].drop(['target'], axis=1)
-    # 1) Feature별 데이터 분포 확인
-    fig, axs = plt.subplots(5, 4)
-    plt.subplots_adjust(hspace=0.5, wspace=0.3)
-    fig.set_figheight(12)
-    fig.set_figwidth(12)
-    for index, feature_name in enumerate(feature_names):
-        i_row = int(np.floor((index / 4) % 5))
-        i_col = index % 4
-        axs[i_row, i_col].set_title(feature_name)
-        axs[i_row, i_col].hist(data_normal[feature_name], alpha=0.4, align='mid', color='green', label='target=0')
-        axs[i_row, i_col].hist(data_overdue[feature_name], alpha=0.4, align='mid', color='blue', label='target=1')
-        axs[i_row, i_col].legend()
-
-        if feature_name in feature_names_categorical:
-            unique_values = sorted(data_base[feature_name].unique())
-            axs[i_row, i_col].set_xticks(unique_values)
-    plt.savefig('./results/data_distribution.png')
+# def data_distribution(data, feature_names_categorical, purpose='base'):
+#     # 정상납부 고객 정보
+#     data_normal = data[data['target'] == 0].drop(['target'], axis=1)
+#     # 연체 고객 정보
+#     data_overdue = data[data['target'] == 1].drop(['target'], axis=1)
+#
+#     # Feature별 데이터 분포 확인
+#     fig, axs = plt.subplots(5, 4)
+#     plt.subplots_adjust(hspace=0.5, wspace=0.3)
+#     fig.set_figheight(12)
+#     fig.set_figwidth(12)
+#     for index, feature_name in enumerate(data_normal.columns):
+#
+#         i_row = int(np.floor((index / 4) % 5))
+#         i_col = index % 4
+#
+#         if purpose == 'base':
+#             if feature_name in feature_names_categorical:
+#                 unique_values = sorted(data[feature_name].unique())
+#                 axs[i_row, i_col].set_xticks(unique_values)
+#         elif purpose == 'scaling':
+#             if feature_name in feature_names_categorical:
+#                 continue
+#
+#         axs[i_row, i_col].set_title(feature_name)
+#         axs[i_row, i_col].hist(data_normal[feature_name], alpha=0.4, align='mid', color='green', label='target=0')
+#         axs[i_row, i_col].hist(data_overdue[feature_name], alpha=0.4, align='mid', color='blue', label='target=1')
+#         axs[i_row, i_col].legend()
+#
+#     plt.savefig('./results/data_distribution_{}.png'.format(purpose))
 
 
 # 데이터 전처리
 def data_preprocessing(data):
-    print('##### number of data before preprocessing: {}'.format(data.shape[0]))
+    counter = Counter(data['target'])
+    print('##### number of data before preprocessing: {} (0: {}, 1: {})'.format(sum(counter.values()), counter[0],
+                                                                                counter[1]))
     result = []
     data_pp = data.copy()
 
@@ -106,10 +135,18 @@ def data_preprocessing(data):
 
     result = pd.DataFrame(result, columns=['feature', 'number of removed data'])
     result.to_csv('./results/data_preprocessing.csv')
-    print('##### number of data after preprocessing: {}'.format(data_pp.shape[0]))
 
+    counter = Counter(data_pp['target'])
+    print('##### number of data after preprocessing: {} (0: {}, 1: {})'.format(sum(counter.values()), counter[0],
+                                                                               counter[1]))
     return data_pp
 
+# 기본 모델 생성
+def default_model():
+    svc_model = SVC()
+    xgb_model = XGBClassifier(random_state=42)
+    cat_model = CatBoostClassifier()
+    return svc_model, xgb_model, cat_model
 
 # feature 중요도 계산
 def feature_importance(model, x, y, feature_names, postfix=None):
@@ -160,8 +197,9 @@ data_base = pd.read_table('./_datasets/train_input.txt', delimiter=',', header=N
 data_base['target'] = np.loadtxt('./_datasets/train_target.txt', dtype=int)
 
 # 1) 데이터 분포 확인
-if exe_mode == EXEMODE.ALL:
-    data_distribution(data_base)
+if exe_mode == EXEMODE.FINAL:
+    data_distribution(data_base[feature_names_numerical], type='numerical', target='base')
+    data_distribution(data_base[feature_names_categorical], type='categorical', target='base')
 
 ####################
 # 2. 데이터에 대한 적절한 처리 및 특징 추출 방안
@@ -170,24 +208,24 @@ if exe_mode == EXEMODE.ALL:
 # 1) 데이터 전처리
 data_pp = data_preprocessing(data_base)
 
-# 2) Feature 중요도 평가
-if exe_mode == EXEMODE.ALL:
-    # SVM
-    svc_model = SVC(kernel='rbf')
+# 2) Feature scaling
+if exe_mode == EXEMODE.FINAL:
+    scaler = StandardScaler()
+    data_pp[feature_names_numerical] = scaler.fit_transform(data_pp[feature_names_numerical])
+    data_distribution(data_pp[feature_names_numerical], type='numerical', target='scaled')
+
+# 3) Feature 중요도 평가
+if exe_mode == EXEMODE.FINAL:
     input = data_pp.drop(['target'], axis=1).to_numpy()
     target = data_pp['target'].to_numpy()
+
+    # 기본 모델(SVM, XGBoost, CatBoost) 이용
+    svc_model, xgb_model, cat_model = default_model()
     feature_importance(svc_model, input, target, feature_names)
-
-    # XGBoost
-    xgb_model = XGBClassifier(booster='gbtree', max_depth=10, gamma=0.5, learning_rate=0.01, n_estimators=100,
-                              random_state=99)
     feature_importance(xgb_model, input, target, feature_names)
-
-    # CatBoost
-    cat_model = CatBoostClassifier()
     feature_importance(cat_model, input, target, feature_names)
 
-# 3) Feature selection : 삭제(성별, 최종학력, 결혼여부), 추가(이용금액, 납부금액, 연체회차, 연체금액), 삭제(과거 6개월간 청구대금, 납부금액)
+# 4) Feature selection : 삭제(성별, 최종학력, 결혼여부), 추가(이용금액, 납부금액, 연체회차, 연체금액), 삭제(과거 6개월간 청구대금, 납부금액)
 if exe_mode == EXEMODE.ALL:
     data_fs = data_pp.copy()
 
@@ -226,14 +264,9 @@ if exe_mode == EXEMODE.ALL:
     feature_names_numerical = [ele for ele in feature_names_numerical if ele not in feature_names_use]
     feature_names_numerical = [ele for ele in feature_names_numerical if ele not in feature_names_pay]
 
-# 4) Feature scaling
-# Scale에 따라 주성분의 설명 가능한 분산량이 왜곡될 수 있기 때문에 PCA 수행 전 표준화 필요
-# TODO scaling 효과
-scaler = StandardScaler()
-data_pp[feature_names_numerical] = scaler.fit_transform(data_pp[feature_names_numerical])
-
-# 5) Feature extraction
-# PCA (visualize : https://plotly.com/python/pca-visualization/)
+# 5) Feature extraction (PCA)
+# 시각화 : https://plotly.com/python/pca-visualization/
+# 참고 : Scale에 따라 주성분의 설명 가능한 분산량이 왜곡될 수 있기 때문에 PCA 수행 전 표준화 필요
 if exe_mode == EXEMODE.FINAL:
     pca = PCA()
     pcs = pca.fit_transform(data_pp.drop(['target'], axis=1))
