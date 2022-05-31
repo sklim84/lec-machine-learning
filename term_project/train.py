@@ -24,12 +24,14 @@ from imblearn.over_sampling import SMOTE
 from imblearn.over_sampling import SMOTENC
 from imblearn.over_sampling import ADASYN
 from collections import Counter
+import os
 
 
 # 실행모드
 class EXEMODE(Enum):
     ALL = 0
     FINAL = 1
+
 
 # 데이터 분포 확인
 def data_distribution(data, type='numerical', about='base'):
@@ -41,20 +43,15 @@ def data_distribution(data, type='numerical', about='base'):
     for index, feature in enumerate(data.columns):
         i_row = int(np.floor((index / num_col) % num_row))
         i_col = index % num_col
-
-        kind = 'hist' if type == 'numerical' else 'bar'
         ax = axs[i_col] if num_row == 1 else axs[i_row, i_col]
 
         if type == 'numerical':
             data[feature].plot.hist(ax=ax, title=feature, alpha=0.5)
         elif type == 'categorical':
             data[feature].value_counts().plot(ax=ax, kind='bar', title=feature, alpha=0.5)
-
-        # data[feature].value_counts().plot(ax=ax, title=feature, kind=kind, alpha=0.5)
-        # print(data[feature].value_counts())
-
     plt.tight_layout()
     plt.savefig('./results/data_distribution_{}_{}.png'.format(about, type))
+
 
 # 데이터 전처리
 def data_preprocessing(data):
@@ -113,6 +110,7 @@ def data_preprocessing(data):
                                                                                counter[1]))
     return data_pp
 
+
 # 기본 모델(SVM, XGBoost, CatBoost) 학습
 def training_default_model(input, target, about='base'):
     train_input, valid_input, train_target, valid_target \
@@ -140,6 +138,8 @@ def training_default_model(input, target, about='base'):
     print('##### Model training result ({})'.format(about))
     print(result)
     result.to_csv('./results/balanced_accuracy_{}.csv'.format(about))
+    return result
+
 
 # feature 중요도 계산
 def feature_importance(model, x, y, feature_names, postfix=None):
@@ -165,7 +165,8 @@ def feature_importance(model, x, y, feature_names, postfix=None):
     # save plot
     sns.set(rc={"axes.unicode_minus": False}, style='whitegrid')
     fig, ax = plt.subplots()
-    ax.boxplot(perm_importance.importances[sorted_idx].T, vert=False, labels=[feature_names[index] for index in sorted_idx])
+    ax.boxplot(perm_importance.importances[sorted_idx].T, vert=False,
+               labels=[feature_names[index] for index in sorted_idx])
     ax.set_title("Feature Importance ({})".format(postfix))
     fig.tight_layout()
     plt.savefig('./results/feature_importance_{}.png'.format(postfix))
@@ -175,7 +176,7 @@ def feature_importance(model, x, y, feature_names, postfix=None):
 exe_mode = EXEMODE.FINAL
 
 ####################
-# 1. 주어진 데이터를 이해하기 위한 각종 분석
+# 1. Data analysis
 ####################
 feature_names = ['age', 'sex', 'education', 'marital_status', 'card_limit']
 feature_names_use = ['use_' + str(i) for i in range(1, 7)]
@@ -190,7 +191,7 @@ data_base = pd.read_table('./_datasets/train_input.txt', delimiter=',', header=N
 data_base['target'] = np.loadtxt('./_datasets/train_target.txt', dtype=int)
 
 # 1) 데이터 분포 확인
-if exe_mode == EXEMODE.FINAL:
+if exe_mode == EXEMODE.ALL:
     data_distribution(data_base[feature_names_numerical], type='numerical', about='base')
     data_distribution(data_base[feature_names_categorical], type='categorical', about='base')
     # base 데이터 기반 기본 모델 학습
@@ -199,24 +200,26 @@ if exe_mode == EXEMODE.FINAL:
     training_default_model(input, target, about='base')
 
 ####################
-# 2. 데이터에 대한 적절한 처리 및 특징 추출 방안
+# 2. Data preprocessing
 ####################
 
-# 1) 데이터 전처리
+# 1) Outlier data processing
 if exe_mode == EXEMODE.FINAL:
     data_pp = data_preprocessing(data_base)
+
     input = data_pp.drop(['target'], axis=1).to_numpy()
     target = data_pp['target'].to_numpy()
-    training_default_model(input, target, about='preprocessed')
+    # training_default_model(input, target, about='preprocessed')
 
 # 2) Feature scaling
 if exe_mode == EXEMODE.FINAL:
     scaler = StandardScaler()
     data_pp[feature_names_numerical] = scaler.fit_transform(data_pp[feature_names_numerical])
     data_distribution(data_pp[feature_names_numerical], type='numerical', about='scaled')
+
     input = data_pp.drop(['target'], axis=1).to_numpy()
     target = data_pp['target'].to_numpy()
-    training_default_model(input, target, about='scaled')
+    # training_default_model(input, target, about='scaled')
 
 # 3) Feature 중요도 평가
 if exe_mode == EXEMODE.ALL:
@@ -227,7 +230,7 @@ if exe_mode == EXEMODE.ALL:
     feature_importance(XGBClassifier(random_state=42), input, target, feature_names)
     feature_importance(CatBoostClassifier(), input, target, feature_names)
 
-# 4) Feature selection : 삭제(성별, 최종학력, 결혼여부), 추가(이용금액, 납부금액, 연체회차, 연체금액), 삭제(과거 6개월간 청구대금, 납부금액)
+# 4) Feature selection : 삭제(성별, 최종학력, 결혼여부)
 if exe_mode == EXEMODE.ALL:
     data_fs = data_pp.copy()
 
@@ -235,36 +238,9 @@ if exe_mode == EXEMODE.ALL:
     data_fs.drop(['education'], axis=1, inplace=True)
     data_fs.drop(['marital_status'], axis=1, inplace=True)
 
-    np_use = data_fs[feature_names_use].to_numpy()
-    np_pay = data_fs[feature_names_pay].to_numpy()
-    # 연체회차 추가
-    np_overdue = np_use - np_pay
-    np_overdue[np_overdue > 0] = 1
-    np_overdue[np_overdue <= 0] = 0
-    data_fs['overdue_num'] = np.sum(np_overdue, axis=1)
-    feature_names.extend(['overdue_num'])
-    feature_names_numerical.extend(['overdue_num'])
-    # 납부금액 추가
-    np_pay = data_fs[feature_names_pay].to_numpy()
-    data_fs['pay_amt'] = np.sum(np_pay, axis=1)
-    feature_names.extend(['pay_amt'])
-    feature_names_numerical.extend(['pay_amt'])
-    # 이용금액 추가
-    data_fs['use_amt'] = np.sum(np_use, axis=1)
-    feature_names.extend(['use_amt'])
-    feature_names_numerical.extend(['use_amt'])
-    # 연체금액 추가
-    np_overdue_amt = np.sum(np_use - np_pay, axis=1)
-    np_overdue_amt[np_overdue_amt > 0] = 0
-    data_fs['overdue_amt'] = abs(np_overdue_amt)
-    feature_names.extend(['overdue_amt'])
-    feature_names_numerical.extend(['overdue_amt'])
-
-    # 과거 6개월간 청구대금/납부금액 삭제
-    data_fs.drop(feature_names_use, axis=1, inplace=True)
-    data_fs.drop(feature_names_pay, axis=1, inplace=True)
-    feature_names_numerical = [ele for ele in feature_names_numerical if ele not in feature_names_use]
-    feature_names_numerical = [ele for ele in feature_names_numerical if ele not in feature_names_pay]
+    input = data_fs.drop(['target'], axis=1).to_numpy()
+    target = data_fs['target'].to_numpy()
+    training_default_model(input, target, about='feature_selection')
 
 # 5) Feature extraction (PCA)
 # 시각화 : https://plotly.com/python/pca-visualization/
@@ -279,45 +255,65 @@ if exe_mode == EXEMODE.ALL:
     fig = px.scatter_matrix(pcs, labels=labels, dimensions=range(4), color=data_pp["target"])
     fig.update_traces(diagonal_visible=False)
     fig.write_html("./results/pca_visualize.html")
-    print(pca.explained_variance_ratio_)
 
 ####################
-# 3. 데이터셋 활용 방안(train data 적음, balance 맞지 않음)
-# 4. 불균형이 심한 데이터를 처리 및 학습하기 위한 방안
+# 3. Data balancing
+# - 데이터셋 활용 방안(train data 적음, balance 맞지 않음)
+# - 불균형이 심한 데이터를 처리 및 학습하기 위한 방안
 ####################
+if exe_mode == EXEMODE.ALL:
+    num_samples = list(range(20000, 100001, 10000))
+    num_samples.insert(0, 12770)
+    input = data_pp.drop(['target'], axis=1).to_numpy()
+    target = data_pp['target'].to_numpy()
+    for num_sample in num_samples:
+        sampling_strategy = {0: num_sample, 1: num_sample}
+        oversampling_methods = [RandomOverSampler(sampling_strategy=sampling_strategy, random_state=42),
+                                SMOTE(sampling_strategy=sampling_strategy, random_state=42),
+                                SMOTENC(sampling_strategy=sampling_strategy, random_state=42,
+                                        categorical_features=[1, 2, 3])]
+        # TODO ADASYN, Borderline-SMOTE (B-SMOTE)
+        for oversampling_method in oversampling_methods:
+            method_name = oversampling_method.__class__.__name__
+            input_over, target_over = oversampling_method.fit_resample(input, target)
+            print('##### Oversampling method: {}'.format(method_name))
+            print('##### Resampled dataset shape %s' % Counter(target_over))
+            training_default_model(input_over, target_over, about='over_{}_{}'.format(method_name, num_sample))
 
-# input = data_pp.drop(['target'], axis=1).to_numpy()
-# target = data_pp['target'].to_numpy()
+    result_columns = ['number of samples', 'SVM', 'XGBoost', 'CatBoost']
+    result_over_total = {'RandomOverSampler': pd.DataFrame(columns=result_columns),
+                         'SMOTE': pd.DataFrame(columns=result_columns),
+                         'SMOTENC': pd.DataFrame(columns=result_columns)}
+    for file_name in os.listdir('./results'):
+        prefix = 'balanced_accuracy_over_'
+        if file_name.startswith(prefix):
+            b_accr = pd.read_csv('./results/' + file_name)
+            os.remove('./results/' + file_name)
+            file_name = os.path.splitext(file_name)[0]
+            file_name = file_name.replace(prefix, '')
+            elements = file_name.split('_')
+            method = elements[0]
+            num_sample = elements[1]
+            result = result_over_total.get(method)
+            item = pd.Series([num_sample, b_accr.iloc[0, 2], b_accr.iloc[1, 2], b_accr.iloc[0, 2]],
+                             index=result.columns)
+            result = result.append(item, ignore_index=True)
+            result_over_total.update({method: result})
 
-# 1) RandomOverSampler
-# ros = RandomOverSampler(sampling_strategy='auto', random_state=42)
-# input_over, target_over = ros.fit_resample(input, target)
-# print('Original dataset shape %s' % Counter(target))
-# print('Resampled  dataset shape %s' % Counter(target_over))
+    for result in result_over_total.items():
+        result[1]['number of samples'] = result[1]['number of samples'].astype('int')
+        result[1].sort_values(by='number of samples', inplace=True)
+        result[1].to_csv('./results/balanced_accuracy_oversampling_{}.csv'.format(result[0]))
 
-# 2) Synthetic Minority Over-sampling Technique (SMOTE)
-# TODO sampling_strategy = 'minority', 'not minority', 'not majority', 'all', 'auto'(='not majority')
-# TODO n_neighbors = default 5
-# sampling_strategy = {0: 20000, 1: 20000}
-# sampling_strategy = 'not majority'
-# smote = SMOTE(sampling_strategy=sampling_strategy, random_state=42)
-# input_over, target_over = smote.fit_resample(input, target)
-# print('Original dataset shape %s' % Counter(target))
-# print('Resampled dataset shape %s' % Counter(target_over))
-
-# 3) SMOTE-Nominal Continuous (SMOTENC)
-# smotenc = SMOTENC(sampling_strategy='auto', random_state=42, categorical_features=[1, 2, 3])
-# input_over, target_over = smotenc.fit_resample(input, target)
-# print('Original dataset shape %s' % Counter(target))
-# print('Resampled  dataset shape %s' % Counter(target_over))
-
-# 4) ADAptive SYNthetic oversampling (ADASYN)
-# adasyn = ADASYN(sampling_strategy='auto', random_state=42)
-# input_over, target_over = adasyn.fit_resample(input, target)
-# print('Original dataset shape %s' % Counter(target))
-# print('Resampled  dataset shape %s' % Counter(target_over))
-
-# 5) Borderline-SMOTE (B-SMOTE)
+for file_name in ['balanced_accuracy_oversampling_RandomOverSampler.csv', 'balanced_accuracy_oversampling_SMOTE.csv',
+                  'balanced_accuracy_oversampling_SMOTENC.csv']:
+    result = pd.read_csv('./results/' + file_name)
+    print(result)
+    result.reset_index(drop=True, inplace=True)
+    result.set_index('number of samples', drop=True, inplace=True)
+    print(result)
+    result.plot(kind='line')
+    plt.savefig('./results/' + os.path.splitext(file_name)[0])
 
 
 ####################
@@ -339,6 +335,41 @@ if exe_mode == EXEMODE.ALL:
 # CatBoost
 # cat_model = CatBoostClassifier()
 # cat_model.fit(train_input, train_target, use_best_model=True, early_stopping_rounds=100, verbose=100)
+
+# TODO 성능개선 : feature selection
+# feature selection : 추가(이용금액, 납부금액, 연체회차, 연체금액), 삭제(과거 6개월간 청구대금, 납부금액)
+# if exe_mode == EXEMODE.ALL:
+# np_use = data_fs[feature_names_use].to_numpy()
+# np_pay = data_fs[feature_names_pay].to_numpy()
+# # 연체회차 추가
+# np_overdue = np_use - np_pay
+# np_overdue[np_overdue > 0] = 1
+# np_overdue[np_overdue <= 0] = 0
+# data_fs['overdue_num'] = np.sum(np_overdue, axis=1)
+# feature_names.extend(['overdue_num'])
+# feature_names_numerical.extend(['overdue_num'])
+# # 납부금액 추가
+# np_pay = data_fs[feature_names_pay].to_numpy()
+# data_fs['pay_amt'] = np.sum(np_pay, axis=1)
+# feature_names.extend(['pay_amt'])
+# feature_names_numerical.extend(['pay_amt'])
+# # 이용금액 추가
+# data_fs['use_amt'] = np.sum(np_use, axis=1)
+# feature_names.extend(['use_amt'])
+# feature_names_numerical.extend(['use_amt'])
+# # 연체금액 추가
+# np_overdue_amt = np.sum(np_use - np_pay, axis=1)
+# np_overdue_amt[np_overdue_amt > 0] = 0
+# data_fs['overdue_amt'] = abs(np_overdue_amt)
+# feature_names.extend(['overdue_amt'])
+# feature_names_numerical.extend(['overdue_amt'])
+#
+# # 과거 6개월간 청구대금/납부금액 삭제
+# data_fs.drop(feature_names_use, axis=1, inplace=True)
+# data_fs.drop(feature_names_pay, axis=1, inplace=True)
+# feature_names_numerical = [ele for ele in feature_names_numerical if ele not in feature_names_use]
+# feature_names_numerical = [ele for ele in feature_names_numerical if ele not in feature_names_pay]
+
 
 ####################
 # Save model
