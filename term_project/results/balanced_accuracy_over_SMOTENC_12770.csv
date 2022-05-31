@@ -1,4 +1,0 @@
-,model,balanced accuracy
-0,SVC,0.6634438016412595
-1,XGBClassifier,0.8554360880030405
-2,CatBoostClassifier,0.862721928972594

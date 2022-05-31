@@ -112,7 +112,7 @@ def data_preprocessing(data):
 
 
 # 기본 모델(SVM, XGBoost, CatBoost) 학습
-def training_default_model(input, target, about='base'):
+def training_default_model(input, target, about='base', save_file=True):
     train_input, valid_input, train_target, valid_target \
         = train_test_split(input, target, test_size=0.33, random_state=42)
     # SVM
@@ -137,7 +137,8 @@ def training_default_model(input, target, about='base'):
     result.loc[2] = [cat_model.__class__.__name__, cat_b_accr]
     print('##### Model training result ({})'.format(about))
     print(result)
-    result.to_csv('./results/balanced_accuracy_{}.csv'.format(about))
+    if save_file:
+        result.to_csv('./results/balanced_accuracy_{}.csv'.format(about))
     return result
 
 
@@ -262,59 +263,45 @@ if exe_mode == EXEMODE.ALL:
 # - 불균형이 심한 데이터를 처리 및 학습하기 위한 방안
 ####################
 if exe_mode == EXEMODE.ALL:
-    num_samples = list(range(20000, 100001, 10000))
-    num_samples.insert(0, 12770)
+    result_columns = ['number of samples', 'SVM', 'XGBoost', 'CatBoost']
+    result_over_total = {'RandomOverSampler': pd.DataFrame(columns=result_columns),
+                         'SMOTE': pd.DataFrame(columns=result_columns),
+                         'SMOTENC': pd.DataFrame(columns=result_columns),
+                         'ADASYN': pd.DataFrame(columns=result_columns)}
+
     input = data_pp.drop(['target'], axis=1).to_numpy()
     target = data_pp['target'].to_numpy()
+    num_samples = list(range(20000, 100001, 10000))
+    num_samples.append(0, Counter(data_pp['target'])[0])
     for num_sample in num_samples:
         sampling_strategy = {0: num_sample, 1: num_sample}
         oversampling_methods = [RandomOverSampler(sampling_strategy=sampling_strategy, random_state=42),
                                 SMOTE(sampling_strategy=sampling_strategy, random_state=42),
                                 SMOTENC(sampling_strategy=sampling_strategy, random_state=42,
-                                        categorical_features=[1, 2, 3])]
-        # TODO ADASYN, Borderline-SMOTE (B-SMOTE)
+                                        categorical_features=[1, 2, 3]),
+                                ADASYN(sampling_strategy=sampling_strategy, random_state=42)]
         for oversampling_method in oversampling_methods:
-            method_name = oversampling_method.__class__.__name__
+            method = oversampling_method.__class__.__name__
             input_over, target_over = oversampling_method.fit_resample(input, target)
-            print('##### Oversampling method: {}'.format(method_name))
-            print('##### Resampled dataset shape %s' % Counter(target_over))
-            training_default_model(input_over, target_over, about='over_{}_{}'.format(method_name, num_sample))
 
-    result_columns = ['number of samples', 'SVM', 'XGBoost', 'CatBoost']
-    result_over_total = {'RandomOverSampler': pd.DataFrame(columns=result_columns),
-                         'SMOTE': pd.DataFrame(columns=result_columns),
-                         'SMOTENC': pd.DataFrame(columns=result_columns)}
-    for file_name in os.listdir('./results'):
-        prefix = 'balanced_accuracy_over_'
-        if file_name.startswith(prefix):
-            b_accr = pd.read_csv('./results/' + file_name)
-            os.remove('./results/' + file_name)
-            file_name = os.path.splitext(file_name)[0]
-            file_name = file_name.replace(prefix, '')
-            elements = file_name.split('_')
-            method = elements[0]
-            num_sample = elements[1]
-            result = result_over_total.get(method)
-            item = pd.Series([num_sample, b_accr.iloc[0, 2], b_accr.iloc[1, 2], b_accr.iloc[0, 2]],
-                             index=result.columns)
-            result = result.append(item, ignore_index=True)
-            result_over_total.update({method: result})
+            print('##### Oversampling method: {}'.format(method))
+            # ADASYN : 클래스별 데이터 생성 수 상이
+            print('##### Resampled dataset shape %s' % Counter(target_over))
+            b_accr = training_default_model(input_over, target_over,
+                                            about='over_{}_{}'.format(method, len(target_over)), save_file=False)
+            result_total = result_over_total.get(method)
+            item = pd.Series([len(target_over), b_accr.iloc[0, 1], b_accr.iloc[1, 1], b_accr.iloc[2, 1]],
+                             index=result_total.columns)
+            result_total = result_total.append(item, ignore_index=True)
+            result_over_total.update({method: result_total})
 
     for result in result_over_total.items():
         result[1]['number of samples'] = result[1]['number of samples'].astype('int')
         result[1].sort_values(by='number of samples', inplace=True)
+        result[1].reset_index(drop=True, inplace=True)
+        result[1].plot(kind='line', x='number of samples', title='{} balanced accuracy'.format(result[0]))
+        plt.savefig('./results/balanced_accuracy_oversampling_{}.png'.format(result[0]))
         result[1].to_csv('./results/balanced_accuracy_oversampling_{}.csv'.format(result[0]))
-
-for file_name in ['balanced_accuracy_oversampling_RandomOverSampler.csv', 'balanced_accuracy_oversampling_SMOTE.csv',
-                  'balanced_accuracy_oversampling_SMOTENC.csv']:
-    result = pd.read_csv('./results/' + file_name)
-    print(result)
-    result.reset_index(drop=True, inplace=True)
-    result.set_index('number of samples', drop=True, inplace=True)
-    print(result)
-    result.plot(kind='line')
-    plt.savefig('./results/' + os.path.splitext(file_name)[0])
-
 
 ####################
 # 5. 2종 이상의 모델 설계 및 성능 비교 : SVM, XGBoost, CatBoost, TODO MLP
