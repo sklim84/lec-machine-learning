@@ -271,7 +271,7 @@ if exe_mode == EXEMODE.ALL:
 
     input = data_pp.drop(['target'], axis=1).to_numpy()
     target = data_pp['target'].to_numpy()
-    num_samples = list(range(20000, 100001, 10000))
+    num_samples = list(range(20000, 150001, 10000))
     num_samples.append(0, Counter(data_pp['target'])[0])
     for num_sample in num_samples:
         sampling_strategy = {0: num_sample, 1: num_sample}
