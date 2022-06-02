@@ -113,25 +113,25 @@ def training_default_model(input, target, about='base', save_file=True):
     train_input, valid_input, train_target, valid_target \
         = train_test_split(input, target, test_size=0.33, random_state=42)
     # SVM
-    svc_model = SVC()
-    svc_model.fit(train_input, train_target)
-    svc_pred_target = svc_model.predict(valid_input)
-    svc_b_accr = balanced_accuracy_score(valid_target, svc_pred_target)
+    model_svc = SVC()
+    model_svc.fit(train_input, train_target)
+    pred_target_svc = model_svc.predict(valid_input)
+    b_accr_svc = balanced_accuracy_score(valid_target, pred_target_svc)
     # XGBoost
-    xgb_model = XGBClassifier(random_state=42)
-    xgb_model = xgb_model.fit(train_input, train_target)
-    xgb_pred_target = xgb_model.predict(valid_input)
-    xgb_b_accr = balanced_accuracy_score(valid_target, xgb_pred_target)
+    model_xgb = XGBClassifier(random_state=42)
+    model_xgb = model_xgb.fit(train_input, train_target)
+    pred_target_xgb = model_xgb.predict(valid_input)
+    b_accr_xgb = balanced_accuracy_score(valid_target, pred_target_xgb)
     # CatBoost
-    cat_model = CatBoostClassifier()
-    cat_model.fit(train_input, train_target, verbose=100)
-    cat_pred_target = cat_model.predict(valid_input)
-    cat_b_accr = balanced_accuracy_score(valid_target, cat_pred_target)
+    model_cat = CatBoostClassifier()
+    model_cat.fit(train_input, train_target, verbose=100)
+    pred_target_cat = model_cat.predict(valid_input)
+    b_accr_cat = balanced_accuracy_score(valid_target, pred_target_cat)
 
     result = pd.DataFrame(columns=['model', 'balanced accuracy'])
-    result.loc[0] = [svc_model.__class__.__name__, svc_b_accr]
-    result.loc[1] = [xgb_model.__class__.__name__, xgb_b_accr]
-    result.loc[2] = [cat_model.__class__.__name__, cat_b_accr]
+    result.loc[0] = [model_svc.__class__.__name__, b_accr_svc]
+    result.loc[1] = [model_xgb.__class__.__name__, b_accr_xgb]
+    result.loc[2] = [model_cat.__class__.__name__, b_accr_cat]
     print('##### Model training result ({})'.format(about))
     print(result)
     if save_file:
@@ -300,66 +300,67 @@ if exe_mode == EXEMODE.ALL:
         plt.savefig('./results/balanced_accuracy_oversampling_{}.png'.format(result[0]))
         result[1].to_csv('./results/balanced_accuracy_oversampling_{}.csv'.format(result[0]))
 
-####################
-# Hyper-parameter optimization (Scikit-learn GridSearchCV)
-# - 2종 이상의 모델 설계 및 성능 비교 : SVM, XGBoost, CatBoost,
-####################
-
-# oversampling (0: 12770, 1: 12770)
+# Oversampling (SMOTE, 0: 12770, 1: 12770)
 sampling_strategy = {0: Counter(data_pp['target'])[0], 1: Counter(data_pp['target'])[0]}
 smote = SMOTE(sampling_strategy=sampling_strategy, random_state=42)
 input_over, target_over = smote.fit_resample(input, target)
 train_input, valid_input, train_target, valid_target = train_test_split(input_over, target_over, test_size=0.33,
                                                                         random_state=42)
+
+####################
+# Hyper-parameter optimization (Scikit-learn GridSearchCV)
+# - 2종 이상의 모델 설계 및 성능 비교 : SVM, XGBoost, CatBoost,
+####################
+if exe_mode == EXEMODE.ALL:
 # Scorer : balanced accuracy
-balanced_accuracy_scorer = make_scorer(balanced_accuracy_score)
+    balanced_accuracy_scorer = make_scorer(balanced_accuracy_score)
 
-# SVM
-parameters_svm = {'kernel': ('linear', 'poly', 'rbf'),
-                  'C': [1e-3, 1e-2, 1e-1, 1e-0, 1e+1, 1e+2, 1e+3]}
-grid_svm = GridSearchCV(estimator=SVC(random_state=42),
-                        param_grid=parameters_svm,
-                        scoring=balanced_accuracy_scorer,
-                        cv=5,
-                        n_jobs=3,
-                        verbose=100)
-
-grid_svm.fit(train_input, train_target)
-grid_result_svm = pd.DataFrame(grid_svm.cv_results_)
-print(grid_result_svm)
-grid_result_svm.to_csv('./results/grid_result_svm.csv')
-
-# XGBoost
-parameters_xgboost = {'booster': ['gbtree'],
-                      'max_depth': [4, 6, 8],
-                      'gamma': [0.5, 1, 2],
-                      'learning_rate': [0.001, 0.01, 0.1],
-                      'n_estimators': [20, 50, 100]}
-grid_xgboost = GridSearchCV(estimator=XGBClassifier(random_state=42),
-                            param_grid=parameters_xgboost,
+    # SVM
+    parameters_svm = {'kernel': ('linear', 'poly', 'rbf'),
+                      'C': [1e-3, 1e-2, 1e-1, 1e-0, 1e+1, 1e+2, 1e+3]}
+    grid_svm = GridSearchCV(estimator=SVC(random_state=42),
+                            param_grid=parameters_svm,
                             scoring=balanced_accuracy_scorer,
                             cv=5,
                             n_jobs=3,
                             verbose=100)
-grid_xgboost.fit(train_input, train_target)
-grid_result_xgboost = pd.DataFrame(grid_xgboost.cv_results_)
-grid_result_xgboost.to_csv('./results/grid_result_xgboost.csv')
+    grid_svm.fit(train_input, train_target)
+    grid_result_svm = pd.DataFrame(grid_svm.cv_results_)
+    print(grid_result_svm)
+    grid_result_svm.to_csv('./results/grid_result_svm.csv')
 
-# CatBoost
-parameters_catboost = {'max_depth': [4, 6, 8],
-                       'iterations': [600, 800, 1000],
-                       'learning_rate': [0.001, 0.01, 0.1]}
-# 'n_estimators': [20, 50, 100]}
+    # XGBoost
+    parameters_xgboost = {'booster': ['gbtree'],
+                          'max_depth': [4, 6, 8, 10],
+                          'gamma': [0, 1, 2],
+                          'learning_rate': [0.1, 0.3, 0.5],
+                          'subsample': [0.8, 0.9, 1.0]}
+    grid_xgboost = GridSearchCV(estimator=XGBClassifier(random_state=42, early_stopping_rounds=50),
+                                param_grid=parameters_xgboost,
+                                scoring=balanced_accuracy_scorer,
+                                cv=5,
+                                n_jobs=3,
+                                verbose=100)
+    grid_xgboost.fit(train_input, train_target)
+    grid_result_xgboost = pd.DataFrame(grid_xgboost.cv_results_)
+    grid_result_xgboost.to_csv('./results/grid_result_xgboost.csv')
 
-grid_catboost = GridSearchCV(estimator=CatBoostClassifier(random_state=42, verbose=100),
-                             param_grid=parameters_catboost,
-                             scoring=balanced_accuracy_scorer,
-                             cv=5,
-                             n_jobs=3,
-                             verbose=100)
-grid_catboost.fit(train_input, train_target)
-grid_result_catboost = pd.DataFrame(grid_catboost.cv_results_)
-grid_result_catboost.to_csv('./results/grid_result_catboost.csv')
+    # CatBoost
+    parameters_catboost = {'max_depth': [4, 6, 8, 10],
+                           'iterations': [600, 800, 1000],
+                           'subsample': [0.8, 0.9, 1.0]}
+    grid_catboost = GridSearchCV(estimator=CatBoostClassifier(random_state=42, od_type=50, verbose=100),
+                                 param_grid=parameters_catboost,
+                                 scoring=balanced_accuracy_scorer,
+                                 cv=5,
+                                 n_jobs=3,
+                                 verbose=100)
+    grid_catboost.fit(train_input, train_target)
+    grid_result_catboost = pd.DataFrame(grid_catboost.cv_results_)
+    grid_result_catboost.to_csv('./results/grid_result_catboost.csv')
+
+# 최종모델
+model_final = CatBoostClassifier(iterations=1000, max_depth=10, subsample=0.8, random_state=42, od_type=50, verbose=100)
 
 ####################
 # Additional idea
