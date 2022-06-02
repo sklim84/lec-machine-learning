@@ -1,30 +1,27 @@
-import numpy
+from collections import Counter
+from enum import Enum
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import plotly.express as px
 import seaborn as sns
-from sklearn.model_selection import train_test_split
-from sklearn.neural_network import MLPClassifier
-from sklearn.metrics import balanced_accuracy_score
-from sklearn.svm import SVC
-from sklearn.preprocessing import StandardScaler
-from sklearn.inspection import permutation_importance
-# pip install xgboost
-import xgboost
-from xgboost import XGBClassifier
-
 # pip install catboost
 # pip install category_encoders
-from catboost import CatBoostClassifier, Pool
-from enum import Enum
-from sklearn.decomposition import PCA
+from catboost import CatBoostClassifier
+from imblearn.over_sampling import ADASYN
 from imblearn.over_sampling import RandomOverSampler
 from imblearn.over_sampling import SMOTE
 from imblearn.over_sampling import SMOTENC
-from imblearn.over_sampling import ADASYN
-from collections import Counter
-import os
+from sklearn.decomposition import PCA
+from sklearn.inspection import permutation_importance
+from sklearn.metrics import balanced_accuracy_score, make_scorer
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
+from sklearn.model_selection import GridSearchCV
+# pip install xgboost
+from xgboost import XGBClassifier
 
 
 # 실행모드
@@ -304,26 +301,70 @@ if exe_mode == EXEMODE.ALL:
         result[1].to_csv('./results/balanced_accuracy_oversampling_{}.csv'.format(result[0]))
 
 ####################
-# 5. 2종 이상의 모델 설계 및 성능 비교 : SVM, XGBoost, CatBoost, TODO MLP
-# 6. 성능을 향상시키기 위한 각종 아이디어 - Ensemble
+# Hyper-parameter optimization (Scikit-learn GridSearchCV)
+# - 2종 이상의 모델 설계 및 성능 비교 : SVM, XGBoost, CatBoost,
 ####################
-# train_input, valid_input, train_target, valid_target = train_test_split(input_over, target_over, test_size=0.33, random_state=42)
 
-# TODO 파라미터 최적화 : Scikit-learn GridSearchCV
+# oversampling (0: 12770, 1: 12770)
+sampling_strategy = {0: Counter(data_pp['target'])[0], 1: Counter(data_pp['target'])[0]}
+smote = SMOTE(sampling_strategy=sampling_strategy, random_state=42)
+input_over, target_over = smote.fit_resample(input, target)
+train_input, valid_input, train_target, valid_target = train_test_split(input_over, target_over, test_size=0.33,
+                                                                        random_state=42)
+# Scorer : balanced accuracy
+balanced_accuracy_scorer = make_scorer(balanced_accuracy_score)
 
 # SVM
+parameters_svm = {'kernel': ('linear', 'poly', 'rbf'),
+                  'C': [1e-3, 1e-2, 1e-1, 1e-0, 1e+1, 1e+2, 1e+3]}
+grid_svm = GridSearchCV(estimator=SVC(random_state=42),
+                        param_grid=parameters_svm,
+                        scoring=balanced_accuracy_scorer,
+                        cv=5,
+                        n_jobs=3,
+                        verbose=100)
 
-# MLP
+grid_svm.fit(train_input, train_target)
+grid_result_svm = pd.DataFrame(grid_svm.cv_results_)
+print(grid_result_svm)
+grid_result_svm.to_csv('./results/grid_result_svm.csv')
 
 # XGBoost
-# xgb_model = XGBClassifier(booster='gbtree', max_depth=10, gamma=0.5, learning_rate=0.01, n_estimators=100,
-#                           random_state=99)
+parameters_xgboost = {'booster': ['gbtree'],
+                      'max_depth': [4, 6, 8],
+                      'gamma': [0.5, 1, 2],
+                      'learning_rate': [0.001, 0.01, 0.1],
+                      'n_estimators': [20, 50, 100]}
+grid_xgboost = GridSearchCV(estimator=XGBClassifier(random_state=42),
+                            param_grid=parameters_xgboost,
+                            scoring=balanced_accuracy_scorer,
+                            cv=5,
+                            n_jobs=3,
+                            verbose=100)
+grid_xgboost.fit(train_input, train_target)
+grid_result_xgboost = pd.DataFrame(grid_xgboost.cv_results_)
+grid_result_xgboost.to_csv('./results/grid_result_xgboost.csv')
 
 # CatBoost
-# cat_model = CatBoostClassifier()
-# cat_model.fit(train_input, train_target, use_best_model=True, early_stopping_rounds=100, verbose=100)
+parameters_catboost = {'max_depth': [4, 6, 8],
+                       'iterations': [600, 800, 1000],
+                       'learning_rate': [0.001, 0.01, 0.1]}
+# 'n_estimators': [20, 50, 100]}
 
-# TODO 성능개선 : feature selection
+grid_catboost = GridSearchCV(estimator=CatBoostClassifier(random_state=42, verbose=100),
+                             param_grid=parameters_catboost,
+                             scoring=balanced_accuracy_scorer,
+                             cv=5,
+                             n_jobs=3,
+                             verbose=100)
+grid_catboost.fit(train_input, train_target)
+grid_result_catboost = pd.DataFrame(grid_catboost.cv_results_)
+grid_result_catboost.to_csv('./results/grid_result_catboost.csv')
+
+####################
+# Additional idea
+# - 성능을 향상시키기 위한 각종 아이디어 : feature selection, MLP
+####################
 # feature selection : 추가(이용금액, 납부금액, 연체회차, 연체금액), 삭제(과거 6개월간 청구대금, 납부금액)
 # if exe_mode == EXEMODE.ALL:
 # np_use = data_fs[feature_names_use].to_numpy()
@@ -356,7 +397,6 @@ if exe_mode == EXEMODE.ALL:
 # data_fs.drop(feature_names_pay, axis=1, inplace=True)
 # feature_names_numerical = [ele for ele in feature_names_numerical if ele not in feature_names_use]
 # feature_names_numerical = [ele for ele in feature_names_numerical if ele not in feature_names_pay]
-
 
 ####################
 # Save model
