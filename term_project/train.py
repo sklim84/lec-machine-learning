@@ -354,7 +354,7 @@ if exe_mode == EXEMODE.ALL:
     grid_result_svm.to_csv('./results/grid_result_svm.csv')
 
     # TODO MLP
-    parameters_mlp = {'hidden_layer_sizes': [(100,)(100,100),(100,100,100)],
+    parameters_mlp = {'hidden_layer_sizes': [(100,), (100, 100), (100, 100, 100)],
                       'activation': ('logistic', 'tanh', 'relu'),
                       'solver': ('lbfgs', 'nesterovs', 'adam'),
                       'learning_rate_init': [0.1, 0.01, 0.001]}
