@@ -353,7 +353,7 @@ if exe_mode == EXEMODE.ALL:
     print(grid_result_svm)
     grid_result_svm.to_csv('./results/grid_result_svm.csv')
 
-    # TODO MLP
+    # TODO hidden layer size 조정
     parameters_mlp = {'hidden_layer_sizes': [(100,), (100, 100), (100, 100, 100)],
                       'activation': ('logistic', 'tanh', 'relu'),
                       'solver': ('lbfgs', 'nesterovs', 'adam'),
