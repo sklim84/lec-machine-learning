@@ -22,6 +22,7 @@ from sklearn.svm import SVC
 from sklearn.model_selection import GridSearchCV
 # pip install xgboost
 from xgboost import XGBClassifier
+from sklearn.neural_network import MLPClassifier
 
 
 # 실행모드
@@ -112,26 +113,35 @@ def data_preprocessing(data):
 def training_default_model(input, target, about='base', save_file=True):
     train_input, valid_input, train_target, valid_target \
         = train_test_split(input, target, test_size=0.33, random_state=42)
-    # SVM
-    model_svc = SVC()
+    # SVM  (default : C=1.0, kernel="rbf")
+    model_svc = SVC(random_state=42)
     model_svc.fit(train_input, train_target)
     pred_target_svc = model_svc.predict(valid_input)
     b_accr_svc = balanced_accuracy_score(valid_target, pred_target_svc)
-    # XGBoost
+
+    # MLP (default : hidden_layer_sizes=(100,), activation="relu", solver="adam")
+    model_mlp = MLPClassifier(random_state=42, early_stopping=True)
+    model_mlp.fit(train_input, train_target)
+    pred_target_mlp = model_mlp.predict(valid_input)
+    b_accr_mlp = balanced_accuracy_score(valid_target, pred_target_mlp)
+
+    # XGBoost (default : learning_rate=0.3 gamma=0, max_depth=6, subsample=1,  n_estimators=100)
     model_xgb = XGBClassifier(random_state=42)
     model_xgb = model_xgb.fit(train_input, train_target)
     pred_target_xgb = model_xgb.predict(valid_input)
     b_accr_xgb = balanced_accuracy_score(valid_target, pred_target_xgb)
+
     # CatBoost
-    model_cat = CatBoostClassifier()
+    model_cat = CatBoostClassifier(random_state=42)
     model_cat.fit(train_input, train_target, verbose=100)
     pred_target_cat = model_cat.predict(valid_input)
     b_accr_cat = balanced_accuracy_score(valid_target, pred_target_cat)
 
     result = pd.DataFrame(columns=['model', 'balanced accuracy'])
     result.loc[0] = [model_svc.__class__.__name__, b_accr_svc]
-    result.loc[1] = [model_xgb.__class__.__name__, b_accr_xgb]
-    result.loc[2] = [model_cat.__class__.__name__, b_accr_cat]
+    result.loc[1] = [model_mlp.__class__.__name__, b_accr_mlp]
+    result.loc[2] = [model_xgb.__class__.__name__, b_accr_xgb]
+    result.loc[3] = [model_cat.__class__.__name__, b_accr_cat]
     print('##### Model training result ({})'.format(about))
     print(result)
     if save_file:
@@ -148,7 +158,9 @@ def feature_importance(model, x, y, feature_names, postfix=None):
     train_x, valid_x, train_y, valid_y = train_test_split(x, y, test_size=0.33, random_state=42)
     model.fit(train_x, train_y)
     print('complete model fit...')
-    perm_importance = permutation_importance(model, valid_x, valid_y, n_repeats=30, random_state=0, n_jobs=3)
+    balanced_accuracy_scorer = make_scorer(balanced_accuracy_score)
+    perm_importance = permutation_importance(model, valid_x, valid_y, scoring=balanced_accuracy_scorer, n_repeats=30,
+                                             random_state=0, n_jobs=3)
     sorted_idx = perm_importance.importances_mean.argsort()
     print('complete permutation importance...')
 
@@ -166,6 +178,8 @@ def feature_importance(model, x, y, feature_names, postfix=None):
     ax.boxplot(perm_importance.importances[sorted_idx].T, vert=False,
                labels=[feature_names[index] for index in sorted_idx])
     ax.set_title("Feature Importance ({})".format(postfix))
+    ax.set_ylabel('Feature')
+    ax.set_xlabel('Importance')
     fig.tight_layout()
     plt.savefig('./results/feature_importance_{}.png'.format(postfix))
 
@@ -189,7 +203,7 @@ data_base = pd.read_table('./_datasets/train_input.txt', delimiter=',', header=N
 data_base['target'] = np.loadtxt('./_datasets/train_target.txt', dtype=int)
 
 # 1) 데이터 분포 확인
-if exe_mode == EXEMODE.ALL:
+if exe_mode == EXEMODE.FINAL:
     data_distribution(data_base[feature_names_numerical], type='numerical', about='base')
     data_distribution(data_base[feature_names_categorical], type='categorical', about='base')
     # base 데이터 기반 기본 모델 학습
@@ -207,7 +221,7 @@ if exe_mode == EXEMODE.FINAL:
 
     input = data_pp.drop(['target'], axis=1).to_numpy()
     target = data_pp['target'].to_numpy()
-    # training_default_model(input, target, about='preprocessed')
+    training_default_model(input, target, about='preprocessed')
 
 # 2) Feature scaling
 if exe_mode == EXEMODE.FINAL:
@@ -217,28 +231,37 @@ if exe_mode == EXEMODE.FINAL:
 
     input = data_pp.drop(['target'], axis=1).to_numpy()
     target = data_pp['target'].to_numpy()
-    # training_default_model(input, target, about='scaled')
+    training_default_model(input, target, about='scaled')
 
 # 3) Feature 중요도 평가
 if exe_mode == EXEMODE.ALL:
     input = data_pp.drop(['target'], axis=1).to_numpy()
     target = data_pp['target'].to_numpy()
     # 기본 모델(SVM, XGBoost, CatBoost) 이용
-    feature_importance(SVC(), input, target, feature_names)
+    feature_importance(SVC(random_state=42), input, target, feature_names)
+    feature_importance(MLPClassifier(random_state=42, early_stopping=True), input, target, feature_names)
     feature_importance(XGBClassifier(random_state=42), input, target, feature_names)
-    feature_importance(CatBoostClassifier(), input, target, feature_names)
+    feature_importance(CatBoostClassifier(random_state=42), input, target, feature_names)
 
 # 4) Feature selection : 삭제(성별, 최종학력, 결혼여부)
 if exe_mode == EXEMODE.ALL:
     data_fs = data_pp.copy()
-
     data_fs.drop(['sex'], axis=1, inplace=True)
     data_fs.drop(['education'], axis=1, inplace=True)
     data_fs.drop(['marital_status'], axis=1, inplace=True)
 
     input = data_fs.drop(['target'], axis=1).to_numpy()
     target = data_fs['target'].to_numpy()
-    training_default_model(input, target, about='feature_selection')
+    training_default_model(input, target, about='feature_selection1')
+
+    data_fs = data_pp.copy()
+    data_fs.drop(['pay_3'], axis=1, inplace=True)
+    data_fs.drop(['use_1'], axis=1, inplace=True)
+    data_fs.drop(['use_2'], axis=1, inplace=True)
+
+    input = data_fs.drop(['target'], axis=1).to_numpy()
+    target = data_fs['target'].to_numpy()
+    training_default_model(input, target, about='feature_selection2')
 
 # 5) Feature extraction (PCA)
 # 시각화 : https://plotly.com/python/pca-visualization/
@@ -260,7 +283,7 @@ if exe_mode == EXEMODE.ALL:
 # - 불균형이 심한 데이터를 처리 및 학습하기 위한 방안
 ####################
 if exe_mode == EXEMODE.ALL:
-    result_columns = ['number of samples', 'SVM', 'XGBoost', 'CatBoost']
+    result_columns = ['number of samples', 'SVM', 'MLP', 'XGBoost', 'CatBoost']
     result_over_total = {'RandomOverSampler': pd.DataFrame(columns=result_columns),
                          'SMOTE': pd.DataFrame(columns=result_columns),
                          'SMOTENC': pd.DataFrame(columns=result_columns),
@@ -269,7 +292,7 @@ if exe_mode == EXEMODE.ALL:
     input = data_pp.drop(['target'], axis=1).to_numpy()
     target = data_pp['target'].to_numpy()
     num_samples = list(range(20000, 150001, 10000))
-    num_samples.append(0, Counter(data_pp['target'])[0])
+    num_samples.insert(0, Counter(data_pp['target'])[0])
     for num_sample in num_samples:
         sampling_strategy = {0: num_sample, 1: num_sample}
         oversampling_methods = [RandomOverSampler(sampling_strategy=sampling_strategy, random_state=42),
@@ -287,8 +310,9 @@ if exe_mode == EXEMODE.ALL:
             b_accr = training_default_model(input_over, target_over,
                                             about='over_{}_{}'.format(method, len(target_over)), save_file=False)
             result_total = result_over_total.get(method)
-            item = pd.Series([len(target_over), b_accr.iloc[0, 1], b_accr.iloc[1, 1], b_accr.iloc[2, 1]],
-                             index=result_total.columns)
+            item = pd.Series(
+                [len(target_over), b_accr.iloc[0, 1], b_accr.iloc[1, 1], b_accr.iloc[2, 1], b_accr.iloc[3, 1]],
+                index=result_total.columns)
             result_total = result_total.append(item, ignore_index=True)
             result_over_total.update({method: result_total})
 
@@ -312,7 +336,7 @@ train_input, valid_input, train_target, valid_target = train_test_split(input_ov
 # - 2종 이상의 모델 설계 및 성능 비교 : SVM, XGBoost, CatBoost,
 ####################
 if exe_mode == EXEMODE.ALL:
-# Scorer : balanced accuracy
+    # Scorer : balanced accuracy
     balanced_accuracy_scorer = make_scorer(balanced_accuracy_score)
 
     # SVM
@@ -328,6 +352,22 @@ if exe_mode == EXEMODE.ALL:
     grid_result_svm = pd.DataFrame(grid_svm.cv_results_)
     print(grid_result_svm)
     grid_result_svm.to_csv('./results/grid_result_svm.csv')
+
+    # TODO MLP
+    parameters_mlp = {'hidden_layer_sizes': [(100,)(100,100),(100,100,100)],
+                      'activation': ('logistic', 'tanh', 'relu'),
+                      'solver': ('lbfgs', 'nesterovs', 'adam'),
+                      'learning_rate_init': [0.1, 0.01, 0.001]}
+    grid_mlp = GridSearchCV(estimator=MLPClassifier(random_state=42, early_stopping=True),
+                            param_grid=parameters_mlp,
+                            scoring=balanced_accuracy_scorer,
+                            cv=5,
+                            n_jobs=3,
+                            verbose=100)
+    grid_mlp.fit(train_input, train_target)
+    grid_result_mlp = pd.DataFrame(grid_mlp.cv_results_)
+    print(grid_result_mlp)
+    grid_result_mlp.to_csv('./results/grid_result_mlp.csv')
 
     # XGBoost
     parameters_xgboost = {'booster': ['gbtree'],
