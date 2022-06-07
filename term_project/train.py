@@ -402,6 +402,12 @@ if exe_mode == EXEMODE.ALL:
 
 # 최종모델
 model_final = CatBoostClassifier(iterations=1000, max_depth=10, subsample=0.8, random_state=42, od_type=50, verbose=100)
+# TODO XGBoost / CatBoost 선택 사유
+# - catboost : 대부분이 범주형변수로 이루어진 데이터셋에서 예측 성능이 우수
+# - Boosting : 약한 분류기들을 결합하여 보다 더 강한 분류기를 만드는 알고리즘
+#              bias를 작게 하기 때문에 그만큼 variance가 커지게 되어 오버피팅이 발생
+# - 앙상블(?)
+# TODO StratifiedKFold(?)
 
 ####################
 # Additional idea
