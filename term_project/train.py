@@ -341,7 +341,8 @@ if exe_mode == EXEMODE.ALL:
 
     # SVM
     parameters_svm = {'kernel': ('linear', 'poly', 'rbf'),
-                      'C': [1e-3, 1e-2, 1e-1, 1e-0, 1e+1, 1e+2, 1e+3]}
+                      'C': [1e-3, 1e-2, 1e-1, 1e-0, 1e+1, 1e+2, 1e+3],
+                      'gamma': [1e-1, 1e-0, 1e+1]}
     grid_svm = GridSearchCV(estimator=SVC(random_state=42),
                             param_grid=parameters_svm,
                             scoring=balanced_accuracy_scorer,
