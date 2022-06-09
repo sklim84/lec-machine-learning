@@ -27,7 +27,7 @@ from sklearn.neural_network import MLPClassifier
 
 # 실행모드
 class EXEMODE(Enum):
-    ALL = 0
+    TEST = 0
     FINAL = 1
 
 
@@ -109,7 +109,7 @@ def data_preprocessing(data):
     return data_pp
 
 
-# 기본 모델(SVM, XGBoost, CatBoost) 학습
+# 기본 모델(SVM, MLP, XGBoost, CatBoost) 학습
 def training_default_model(input, target, about='base', save_file=True):
     train_input, valid_input, train_target, valid_target \
         = train_test_split(input, target, test_size=0.33, random_state=42)
@@ -234,7 +234,7 @@ if exe_mode == EXEMODE.FINAL:
     training_default_model(input, target, about='scaled')
 
 # 3) Feature 중요도 평가
-if exe_mode == EXEMODE.ALL:
+if exe_mode == EXEMODE.TEST:
     input = data_pp.drop(['target'], axis=1).to_numpy()
     target = data_pp['target'].to_numpy()
     # 기본 모델(SVM, XGBoost, CatBoost) 이용
@@ -244,7 +244,7 @@ if exe_mode == EXEMODE.ALL:
     feature_importance(CatBoostClassifier(random_state=42), input, target, feature_names)
 
 # 4) Feature selection : 삭제(성별, 최종학력, 결혼여부)
-if exe_mode == EXEMODE.ALL:
+if exe_mode == EXEMODE.TEST:
     data_fs = data_pp.copy()
     data_fs.drop(['sex'], axis=1, inplace=True)
     data_fs.drop(['education'], axis=1, inplace=True)
@@ -266,7 +266,7 @@ if exe_mode == EXEMODE.ALL:
 # 5) Feature extraction (PCA)
 # 시각화 : https://plotly.com/python/pca-visualization/
 # 참고 : Scale에 따라 주성분의 설명 가능한 분산량이 왜곡될 수 있기 때문에 PCA 수행 전 표준화 필요
-if exe_mode == EXEMODE.ALL:
+if exe_mode == EXEMODE.TEST:
     pca = PCA()
     pcs = pca.fit_transform(data_pp.drop(['target'], axis=1))
     labels = {
@@ -282,7 +282,7 @@ if exe_mode == EXEMODE.ALL:
 # - 데이터셋 활용 방안(train data 적음, balance 맞지 않음)
 # - 불균형이 심한 데이터를 처리 및 학습하기 위한 방안
 ####################
-if exe_mode == EXEMODE.ALL:
+if exe_mode == EXEMODE.TEST:
     result_columns = ['number of samples', 'SVM', 'MLP', 'XGBoost', 'CatBoost']
     result_over_total = {'RandomOverSampler': pd.DataFrame(columns=result_columns),
                          'SMOTE': pd.DataFrame(columns=result_columns),
@@ -325,24 +325,24 @@ if exe_mode == EXEMODE.ALL:
         result[1].to_csv('./results/balanced_accuracy_oversampling_{}.csv'.format(result[0]))
 
 # Oversampling (SMOTE, 0: 12770, 1: 12770)
-sampling_strategy = {0: Counter(data_pp['target'])[0], 1: Counter(data_pp['target'])[0]}
-smote = SMOTE(sampling_strategy=sampling_strategy, random_state=42)
-input_over, target_over = smote.fit_resample(input, target)
-train_input, valid_input, train_target, valid_target = train_test_split(input_over, target_over, test_size=0.33,
-                                                                        random_state=42)
+if exe_mode == EXEMODE.FINAL:
+    sampling_strategy = {0: Counter(data_pp['target'])[0], 1: Counter(data_pp['target'])[0]}
+    smote = SMOTE(sampling_strategy=sampling_strategy, random_state=42)
+    input_over, target_over = smote.fit_resample(input, target)
+    train_input, valid_input, train_target, valid_target = train_test_split(input_over, target_over, test_size=0.33,
+                                                                            random_state=42)
 
 ####################
 # Hyper-parameter optimization (Scikit-learn GridSearchCV)
-# - 2종 이상의 모델 설계 및 성능 비교 : SVM, XGBoost, CatBoost,
+# - 2종 이상의 모델 설계 및 성능 비교 : SVM, MLP, XGBoost, CatBoost,
 ####################
-if exe_mode == EXEMODE.ALL:
+if exe_mode == EXEMODE.TEST:
     # Scorer : balanced accuracy
     balanced_accuracy_scorer = make_scorer(balanced_accuracy_score)
 
     # SVM
     parameters_svm = {'kernel': ('linear', 'poly', 'rbf'),
-                      'C': [1e-2, 1e-1, 1e-0, 1e+1, 1e+2],
-                      'gamma': [1e-1, 1e-0, 1e+1]}
+                      'C': [1e-3, 1e-2, 1e-1, 1e-0, 1e+1, 1e+2, 1e+3]}
     grid_svm = GridSearchCV(estimator=SVC(random_state=42),
                             param_grid=parameters_svm,
                             scoring=balanced_accuracy_scorer,
@@ -400,15 +400,6 @@ if exe_mode == EXEMODE.ALL:
     grid_result_catboost = pd.DataFrame(grid_catboost.cv_results_)
     grid_result_catboost.to_csv('./results/grid_result_catboost.csv')
 
-# 최종모델
-model_final = CatBoostClassifier(iterations=1000, max_depth=10, subsample=0.8, random_state=42, od_type=50, verbose=100)
-# TODO XGBoost / CatBoost 선택 사유
-# - catboost : 대부분이 범주형변수로 이루어진 데이터셋에서 예측 성능이 우수
-# - Boosting : 약한 분류기들을 결합하여 보다 더 강한 분류기를 만드는 알고리즘
-#              bias를 작게 하기 때문에 그만큼 variance가 커지게 되어 오버피팅이 발생
-# - 앙상블(?)
-# TODO StratifiedKFold(?)
-
 ####################
 # Additional idea
 # - 성능을 향상시키기 위한 각종 아이디어 : feature selection, MLP
@@ -445,6 +436,9 @@ model_final = CatBoostClassifier(iterations=1000, max_depth=10, subsample=0.8, r
 # data_fs.drop(feature_names_pay, axis=1, inplace=True)
 # feature_names_numerical = [ele for ele in feature_names_numerical if ele not in feature_names_use]
 # feature_names_numerical = [ele for ele in feature_names_numerical if ele not in feature_names_pay]
+
+# 최종 모델 선택
+model_final = CatBoostClassifier(iterations=1000, max_depth=10, subsample=0.8, random_state=42, od_type=50, verbose=100)
 
 ####################
 # Save model
