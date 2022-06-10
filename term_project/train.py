@@ -60,7 +60,7 @@ def data_preprocessing(data):
     data_pp = data.copy()
 
     # 최종학력 : 1,2,3,4 이외 값 데이터 삭제
-    data_pp['education'] = data_pp['education'].map(lambda x: 4 if x not in [1, 2, 3, 4] else x)
+    # 기타(4) 값으로 대체 테스트 : data_pp['education'] = data_pp['education'].map(lambda x: 4 if x not in [1, 2, 3, 4] else x)
     fault_edu = data_pp[~data_pp['education'].isin([1, 2, 3, 4])].index
     print('\tremove education data: {} rows'.format(len(fault_edu)))
     data_pp.drop(fault_edu, inplace=True)
@@ -68,7 +68,7 @@ def data_preprocessing(data):
     result.append(('education', len(fault_edu)))
 
     # 결혼여부 : 1,2,3 이외 값 데이터 삭제
-    data_pp['marital_status'] = data_pp['marital_status'].map(lambda x: 3 if x not in [1, 2, 3] else x)
+    # 기타(3) 값으로 대체 테스트 : data_pp['marital_status'] = data_pp['marital_status'].map(lambda x: 3 if x not in [1, 2, 3] else x)
     fault_ms = data_pp[~data_pp['marital_status'].isin([1, 2, 3])].index
     print('\tremove marital status data: {} rows'.format(len(fault_ms)))
     data_pp.drop(fault_ms, inplace=True)
@@ -256,8 +256,8 @@ if exe_mode == EXEMODE.TEST:
     training_default_model(input, target, about='feature_selection2')
 
 # 5) Feature extraction : PCA
-# 시각화 : https://plotly.com/python/pca-visualization/
-# 참고 : Scale에 따라 주성분의 설명 가능한 분산량이 왜곡될 수 있기 때문에 PCA 수행 전 표준화 필요
+# - 시각화 : https://plotly.com/python/pca-visualization/
+# - 참고 : Scale에 따라 주성분의 설명 가능한 분산량이 왜곡될 수 있기 때문에 PCA 수행 전 표준화 필요
 if exe_mode == EXEMODE.TEST:
     pca = PCA()
     pcs = pca.fit_transform(data_pp.drop(['target'], axis=1))
@@ -393,6 +393,7 @@ if exe_mode == EXEMODE.TEST:
     grid_result_catboost = pd.DataFrame(grid_catboost.cv_results_)
     grid_result_catboost.to_csv('./results/grid_result_catboost.csv')
 
+
 ####################
 # 4. Additional idea
 # - Feature selection 재시도 : 추가(이용금액, 납부금액, 연체회차, 연체금액), 삭제(과거 6개월간 청구대금, 납부금액)
@@ -461,12 +462,10 @@ if exe_mode == EXEMODE.FINAL:
     np_overdue_amt[np_overdue_amt > 0] = 0
     data_fn['overdue_amt'] = abs(np_overdue_amt)
     feature_names_numerical.extend(['overdue_amt'])
-    print('##### Feature selection: {}'.format(data_fn.columns))
 
     # ③ Data scaling
     scaler = StandardScaler()
     data_fn[feature_names_numerical] = scaler.fit_transform(data_fn[feature_names_numerical])
-    print(data_fn)
 
     # ④ Data balancing
     input = data_fn.drop(['target'], axis=1).to_numpy()

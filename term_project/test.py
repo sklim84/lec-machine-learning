@@ -42,6 +42,7 @@ model_fn.load_model('./models/catboost.model')
 # Predict
 test_input = data.to_numpy()
 pred_target = model_fn.predict(test_input)
+print(Counter(pred_target))
 
 # Save result
 pred_target.tofile('./results/test_output_limseonkyu.txt', sep='\n')
