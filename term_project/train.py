@@ -60,7 +60,7 @@ def data_preprocessing(data):
     data_pp = data.copy()
 
     # 최종학력 : 1,2,3,4 이외 값 데이터 삭제
-    # data_pp['education'] = data_pp['education'].map(lambda x: 4 if x not in [1, 2, 3, 4] else x)
+    data_pp['education'] = data_pp['education'].map(lambda x: 4 if x not in [1, 2, 3, 4] else x)
     fault_edu = data_pp[~data_pp['education'].isin([1, 2, 3, 4])].index
     print('\tremove education data: {} rows'.format(len(fault_edu)))
     data_pp.drop(fault_edu, inplace=True)
@@ -68,7 +68,7 @@ def data_preprocessing(data):
     result.append(('education', len(fault_edu)))
 
     # 결혼여부 : 1,2,3 이외 값 데이터 삭제
-    # data_pp['marital_status'] = data_pp['marital_status'].map(lambda x: 3 if x not in [1, 2, 3] else x)
+    data_pp['marital_status'] = data_pp['marital_status'].map(lambda x: 3 if x not in [1, 2, 3] else x)
     fault_ms = data_pp[~data_pp['marital_status'].isin([1, 2, 3])].index
     print('\tremove marital status data: {} rows'.format(len(fault_ms)))
     data_pp.drop(fault_ms, inplace=True)
@@ -83,12 +83,6 @@ def data_preprocessing(data):
             data_pp.drop(fault_use, inplace=True)
             data_pp.reset_index(drop=True, inplace=True)
             result.append((feature_name_use, len(fault_use)))
-    # data_pp[feature_names_use] = abs(data_pp[feature_names_use])
-    # comp_use_limit = np.expand_dims(data_pp['card_limit'].to_numpy(), axis=1)
-    # comp_use_limit = np.tile(comp_use_limit, reps=[1, len(feature_names_use)])  # 6개 열로 복사
-    # comp_use_limit = comp_use_limit - data_pp[feature_names_use].to_numpy()
-    # data_pp.drop(np.where(comp_use_limit < 0)[0], inplace=True)
-    # data_pp.reset_index(drop=True, inplace=True)
 
     # 과거 6개월간 월별 납부 금액 : 음수(-) 데이터 삭제
     # data_pp[feature_names_pay] = abs(data_pp[feature_names_pay])
@@ -188,8 +182,10 @@ def feature_importance(model, x, y, feature_names, postfix=None):
 exe_mode = EXEMODE.FINAL
 
 ####################
-# 1. Data analysis
+# 1. Data analysis & preprocessing
+# - Data distribution, outlier processing, scaling, feature selection/extraction
 ####################
+# Data loding
 feature_names = ['age', 'sex', 'education', 'marital_status', 'card_limit']
 feature_names_use = ['use_' + str(i) for i in range(1, 7)]
 feature_names_pay = ['pay_' + str(i) for i in range(1, 7)]
@@ -202,8 +198,8 @@ feature_names_numerical.extend(feature_names_pay)
 data_base = pd.read_table('./_datasets/train_input.txt', delimiter=',', header=None, names=feature_names)
 data_base['target'] = np.loadtxt('./_datasets/train_target.txt', dtype=int)
 
-# 1) 데이터 분포 확인
-if exe_mode == EXEMODE.FINAL:
+# 1) Data distribution
+if exe_mode == EXEMODE.TEST:
     data_distribution(data_base[feature_names_numerical], type='numerical', about='base')
     data_distribution(data_base[feature_names_categorical], type='categorical', about='base')
     # base 데이터 기반 기본 모델 학습
@@ -211,20 +207,16 @@ if exe_mode == EXEMODE.FINAL:
     target = data_base['target'].to_numpy()
     training_default_model(input, target, about='base')
 
-####################
-# 2. Data preprocessing
-####################
-
-# 1) Outlier data processing
-if exe_mode == EXEMODE.FINAL:
+# 2) Outlier data processing
+if exe_mode == EXEMODE.TEST:
     data_pp = data_preprocessing(data_base)
 
     input = data_pp.drop(['target'], axis=1).to_numpy()
     target = data_pp['target'].to_numpy()
     training_default_model(input, target, about='preprocessed')
 
-# 2) Feature scaling
-if exe_mode == EXEMODE.FINAL:
+# 3) Data scaling
+if exe_mode == EXEMODE.TEST:
     scaler = StandardScaler()
     data_pp[feature_names_numerical] = scaler.fit_transform(data_pp[feature_names_numerical])
     data_distribution(data_pp[feature_names_numerical], type='numerical', about='scaled')
@@ -233,7 +225,7 @@ if exe_mode == EXEMODE.FINAL:
     target = data_pp['target'].to_numpy()
     training_default_model(input, target, about='scaled')
 
-# 3) Feature 중요도 평가
+# 4) Feature selection : feature importance
 if exe_mode == EXEMODE.TEST:
     input = data_pp.drop(['target'], axis=1).to_numpy()
     target = data_pp['target'].to_numpy()
@@ -263,7 +255,7 @@ if exe_mode == EXEMODE.TEST:
     target = data_fs['target'].to_numpy()
     training_default_model(input, target, about='feature_selection2')
 
-# 5) Feature extraction (PCA)
+# 5) Feature extraction : PCA
 # 시각화 : https://plotly.com/python/pca-visualization/
 # 참고 : Scale에 따라 주성분의 설명 가능한 분산량이 왜곡될 수 있기 때문에 PCA 수행 전 표준화 필요
 if exe_mode == EXEMODE.TEST:
@@ -278,9 +270,8 @@ if exe_mode == EXEMODE.TEST:
     fig.write_html("./results/pca_visualize.html")
 
 ####################
-# 3. Data balancing
-# - 데이터셋 활용 방안(train data 적음, balance 맞지 않음)
-# - 불균형이 심한 데이터를 처리 및 학습하기 위한 방안
+# 2. Data balancing
+# - Oversampling
 ####################
 if exe_mode == EXEMODE.TEST:
     result_columns = ['number of samples', 'SVM', 'MLP', 'XGBoost', 'CatBoost']
@@ -324,19 +315,21 @@ if exe_mode == EXEMODE.TEST:
         plt.savefig('./results/balanced_accuracy_oversampling_{}.png'.format(result[0]))
         result[1].to_csv('./results/balanced_accuracy_oversampling_{}.csv'.format(result[0]))
 
-# Oversampling (SMOTE, 0: 12770, 1: 12770)
-if exe_mode == EXEMODE.FINAL:
+####################
+# 3. Hyper-parameter optimization
+# - Method : Grid search
+# - Classifier : SVM, MLP, XGBoost, CatBoost
+####################
+if exe_mode == EXEMODE.TEST:
+    # Oversampling : SMOTE(0: 12770, 1: 12770)
+    input = data_pp.drop(['target'], axis=1).to_numpy()
+    target = data_pp['target'].to_numpy()
     sampling_strategy = {0: Counter(data_pp['target'])[0], 1: Counter(data_pp['target'])[0]}
     smote = SMOTE(sampling_strategy=sampling_strategy, random_state=42)
     input_over, target_over = smote.fit_resample(input, target)
     train_input, valid_input, train_target, valid_target = train_test_split(input_over, target_over, test_size=0.33,
                                                                             random_state=42)
 
-####################
-# Hyper-parameter optimization (Scikit-learn GridSearchCV)
-# - 2종 이상의 모델 설계 및 성능 비교 : SVM, MLP, XGBoost, CatBoost,
-####################
-if exe_mode == EXEMODE.TEST:
     # Scorer : balanced accuracy
     balanced_accuracy_scorer = make_scorer(balanced_accuracy_score)
 
@@ -354,7 +347,7 @@ if exe_mode == EXEMODE.TEST:
     print(grid_result_svm)
     grid_result_svm.to_csv('./results/grid_result_svm.csv')
 
-    # TODO hidden layer size 조정
+    # MLP
     parameters_mlp = {'hidden_layer_sizes': [(100,), (100, 100), (100, 100, 100)],
                       'activation': ('logistic', 'tanh', 'relu'),
                       'solver': ('lbfgs', 'nesterovs', 'adam'),
@@ -401,45 +394,99 @@ if exe_mode == EXEMODE.TEST:
     grid_result_catboost.to_csv('./results/grid_result_catboost.csv')
 
 ####################
-# Additional idea
-# - 성능을 향상시키기 위한 각종 아이디어 : feature selection, MLP
+# 4. Additional idea
+# - Feature selection 재시도 : 추가(이용금액, 납부금액, 연체회차, 연체금액), 삭제(과거 6개월간 청구대금, 납부금액)
 ####################
-# feature selection : 추가(이용금액, 납부금액, 연체회차, 연체금액), 삭제(과거 6개월간 청구대금, 납부금액)
-# if exe_mode == EXEMODE.ALL:
-# np_use = data_fs[feature_names_use].to_numpy()
-# np_pay = data_fs[feature_names_pay].to_numpy()
-# # 연체회차 추가
-# np_overdue = np_use - np_pay
-# np_overdue[np_overdue > 0] = 1
-# np_overdue[np_overdue <= 0] = 0
-# data_fs['overdue_num'] = np.sum(np_overdue, axis=1)
-# feature_names.extend(['overdue_num'])
-# feature_names_numerical.extend(['overdue_num'])
-# # 납부금액 추가
-# np_pay = data_fs[feature_names_pay].to_numpy()
-# data_fs['pay_amt'] = np.sum(np_pay, axis=1)
-# feature_names.extend(['pay_amt'])
-# feature_names_numerical.extend(['pay_amt'])
-# # 이용금액 추가
-# data_fs['use_amt'] = np.sum(np_use, axis=1)
-# feature_names.extend(['use_amt'])
-# feature_names_numerical.extend(['use_amt'])
-# # 연체금액 추가
-# np_overdue_amt = np.sum(np_use - np_pay, axis=1)
-# np_overdue_amt[np_overdue_amt > 0] = 0
-# data_fs['overdue_amt'] = abs(np_overdue_amt)
-# feature_names.extend(['overdue_amt'])
-# feature_names_numerical.extend(['overdue_amt'])
-#
-# # 과거 6개월간 청구대금/납부금액 삭제
-# data_fs.drop(feature_names_use, axis=1, inplace=True)
-# data_fs.drop(feature_names_pay, axis=1, inplace=True)
-# feature_names_numerical = [ele for ele in feature_names_numerical if ele not in feature_names_use]
-# feature_names_numerical = [ele for ele in feature_names_numerical if ele not in feature_names_pay]
+if exe_mode == EXEMODE.TEST:
+    data_fs = data_pp.copy()
+    np_use = data_pp[feature_names_use].to_numpy()
+    np_pay = data_pp[feature_names_pay].to_numpy()
 
-# 최종 모델 선택
-model_final = CatBoostClassifier(iterations=1000, max_depth=10, subsample=0.8, random_state=42, od_type=50, verbose=100)
+    # ① 연체회차 추가
+    np_overdue = np_use - np_pay
+    np_overdue[np_overdue > 0] = 1
+    np_overdue[np_overdue <= 0] = 0
+    data_fs['overdue_num'] = np.sum(np_overdue, axis=1)
+    feature_names_numerical.extend(['overdue_num'])
 
-####################
-# Save model
-####################
+    # ② 납부금액 추가
+    # np_pay = data_fs[feature_names_pay].to_numpy()
+    # data_fs['pay_amt'] = np.sum(np_pay, axis=1)
+    # feature_names_numerical.extend(['pay_amt'])
+
+    # ③ 이용금액 추가
+    # data_fs['use_amt'] = np.sum(np_use, axis=1)
+    # feature_names_numerical.extend(['use_amt'])
+
+    # ④ 연체금액 추가
+    np_overdue_amt = np.sum(np_use - np_pay, axis=1)
+    np_overdue_amt[np_overdue_amt > 0] = 0
+    data_fs['overdue_amt'] = abs(np_overdue_amt)
+    feature_names_numerical.extend(['overdue_amt'])
+
+    # ⑤ 과거 6개월간 청구대금/납부금액 삭제
+    # data_fs.drop(feature_names_use, axis=1, inplace=True)
+    # data_fs.drop(feature_names_pay, axis=1, inplace=True)
+    # feature_names_numerical = [ele for ele in feature_names_numerical if ele not in feature_names_use]
+    # feature_names_numerical = [ele for ele in feature_names_numerical if ele not in feature_names_pay]
+
+    scaler = StandardScaler()
+    data_fs[feature_names_numerical] = scaler.fit_transform(data_fs[feature_names_numerical])
+
+    input = data_fs.drop(['target'], axis=1).to_numpy()
+    target = data_fs['target'].to_numpy()
+    sampling_strategy = {0: Counter(data_fs['target'])[0], 1: Counter(data_fs['target'])[0]}
+    smote = SMOTE(sampling_strategy=sampling_strategy, random_state=42)
+    input_over, target_over = smote.fit_resample(input, target)
+
+    about = 'feature_selection3_1_4'  # feature_selection3_1_4, feature_selection3_2_3_5, feature_selection3_all
+    training_default_model(input_over, target_over, about=about)
+
+# Select final process & model
+if exe_mode == EXEMODE.FINAL:
+    # ① Outlier data processing : 데이터 분포에서 확인된 최종학력, 결혼여부, 과거 6개월 청구대금 중 이상치 데이터
+    data_fn = data_preprocessing(data_base)
+
+    # ② Feature selection : 연체회차(overdue_num), 연체금액(overdue_amt) feature 추가
+    np_use = data_fn[feature_names_use].to_numpy()
+    np_pay = data_fn[feature_names_pay].to_numpy()
+    # 연체회차
+    np_overdue = np_use - np_pay
+    np_overdue[np_overdue > 0] = 1
+    np_overdue[np_overdue <= 0] = 0
+    data_fn['overdue_num'] = np.sum(np_overdue, axis=1)
+    feature_names_numerical.extend(['overdue_num'])
+    # 연체금액
+    np_overdue_amt = np.sum(np_use - np_pay, axis=1)
+    np_overdue_amt[np_overdue_amt > 0] = 0
+    data_fn['overdue_amt'] = abs(np_overdue_amt)
+    feature_names_numerical.extend(['overdue_amt'])
+    print('##### Feature selection: {}'.format(data_fn.columns))
+
+    # ③ Data scaling
+    scaler = StandardScaler()
+    data_fn[feature_names_numerical] = scaler.fit_transform(data_fn[feature_names_numerical])
+    print(data_fn)
+
+    # ④ Data balancing
+    input = data_fn.drop(['target'], axis=1).to_numpy()
+    target = data_fn['target'].to_numpy()
+    sampling_strategy = {0: Counter(data_fn['target'])[0], 1: Counter(data_fn['target'])[0]}
+    smote = SMOTE(sampling_strategy=sampling_strategy, random_state=42)
+    input_over, target_over = smote.fit_resample(input, target)
+    print('##### Oversampling: {}'.format(Counter(target_over)))
+
+    # ⑤ Model selection & hyper-parameter setting
+    model_fn = CatBoostClassifier(iterations=1000, max_depth=10, subsample=0.8, random_state=42)
+
+    # ⑥ Training & validation
+    train_input, valid_input, train_target, valid_target \
+        = train_test_split(input_over, target_over, test_size=0.33, random_state=42)
+
+    model_fn.fit(train_input, train_target, verbose=100)
+    pred_target = model_fn.predict(valid_input)
+    b_accr = balanced_accuracy_score(valid_target, pred_target)
+    print('##### Final model\'s balanced accuracy: {}'.format(b_accr))
+
+    # ⑦ Save model
+    model_fn.save_model('./models/catboost.model')
