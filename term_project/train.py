@@ -6,8 +6,6 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import seaborn as sns
-# pip install catboost
-# pip install category_encoders
 from catboost import CatBoostClassifier
 from imblearn.over_sampling import ADASYN
 from imblearn.over_sampling import RandomOverSampler
@@ -20,7 +18,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 from sklearn.model_selection import GridSearchCV
-# pip install xgboost
 from xgboost import XGBClassifier
 from sklearn.neural_network import MLPClassifier
 

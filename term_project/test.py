@@ -4,7 +4,7 @@ from catboost import CatBoostClassifier
 from sklearn.preprocessing import StandardScaler
 from collections import Counter
 
-# Test data loding
+# Test data loading
 feature_names = ['age', 'sex', 'education', 'marital_status', 'card_limit']
 feature_names_use = ['use_' + str(i) for i in range(1, 7)]
 feature_names_pay = ['pay_' + str(i) for i in range(1, 7)]
